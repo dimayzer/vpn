@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Настройки - Админ-панель</title>
+    <link rel="stylesheet" href="/static/loading.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+        
+        .header h1 {
+            font-size: 2em;
+            margin: 0;
+        }
+        
+        .header-actions {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            text-decoration: none;
+            display: inline-block;
+            transition: all 0.3s;
+        }
+        
+        .btn-primary { background: rgba(255,255,255,0.2); color: white; }
+        .btn-primary:hover { background: rgba(255,255,255,0.3); }
+        .btn-muted { background: #e9ecef; color: #333; }
+        .btn-muted:hover { background: #d6d9dc; }
+        
+        .content {
+            padding: 30px;
+        }
+        
+        .section {
+            margin-bottom: 30px;
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 10px;
+        }
+        
+        .section-title {
+            font-size: 1.5em;
+            margin-bottom: 20px;
+            color: #333;
+        }
+        
+        .form-group {
+            margin-bottom: 20px;
+        }
+        
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #333;
+        }
+        
+        .form-group input,
+        .form-group textarea,
+        .form-group select {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 1em;
+            font-family: inherit;
+        }
+        
+        .form-group textarea {
+            min-height: 100px;
+            resize: vertical;
+        }
+        
+        .form-group small {
+            display: block;
+            margin-top: 5px;
+            color: #666;
+            font-size: 0.9em;
+        }
+        
+        .alert {
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        
+        .alert-success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        
+        .alert-error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>⚙️ Настройки системы</h1>
+            <div class="header-actions">
+                <a class="btn btn-primary" href="/admin/web/dashboard" style="text-decoration:none;">📊 Дашборд</a>
+                <a class="btn btn-primary" href="/admin/web/users" style="text-decoration:none;">👥 Пользователи</a>
+                <a class="btn btn-primary" href="/admin/web/tickets" style="text-decoration:none;">🧾 Тикеты</a>
+                <a class="btn btn-muted" href="/admin/logout" style="text-decoration:none;">🚪 Выйти</a>
+            </div>
+        </div>
+        
+        <div class="content">
+            {% if request.query_params.get('success') %}
+            <div class="alert alert-success">
+                ✅ Настройки успешно сохранены!
+            </div>
+            {% endif %}
+            {% if request.query_params.get('error') %}
+            <div class="alert alert-error">
+                ❌ Ошибка: {{ request.query_params.get('error') }}
+            </div>
+            {% endif %}
+            
+            <form method="post" action="/admin/web/settings">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                
+                <div class="section">
+                    <h2 class="section-title">🤖 Настройки бота</h2>
+                    <div class="form-group">
+                        <label for="bot_welcome_message">Приветственное сообщение</label>
+                        <textarea id="bot_welcome_message" name="bot_welcome_message" placeholder="Сообщение при /start">{{ settings.get('bot_welcome_message', 'Добро пожаловать!') }}</textarea>
+                        <small>Сообщение, которое отправляется пользователю при команде /start</small>
+                    </div>
+                    <div class="form-group">
+                        <label for="bot_help_message">Сообщение помощи</label>
+                        <textarea id="bot_help_message" name="bot_help_message" placeholder="Сообщение при /help">{{ settings.get('bot_help_message', 'Помощь') }}</textarea>
+                        <small>Сообщение, которое отправляется пользователю при команде /help</small>
+                    </div>
+                </div>
+                
+                <div class="section">
+                    <h2 class="section-title">🎁 Реферальная программа</h2>
+                    <div class="form-group">
+                        <label for="referral_reward_referrer_cents">Награда для пригласившего (RUB)</label>
+                        <input type="number" step="0.01" id="referral_reward_referrer_cents" name="referral_reward_referrer_cents" value="{{ (settings.get('referral_reward_referrer_cents', '10000') | int) / 100 }}" placeholder="100.00">
+                        <small>Сумма, которая начисляется пользователю, который пригласил нового пользователя (в RUB)</small>
+                    </div>
+                    <div class="form-group">
+                        <label for="referral_reward_referred_cents">Награда для приглашенного (RUB)</label>
+                        <input type="number" step="0.01" id="referral_reward_referred_cents" name="referral_reward_referred_cents" value="{{ (settings.get('referral_reward_referred_cents', '10000') | int) / 100 }}" placeholder="100.00">
+                        <small>Сумма, которая начисляется новому пользователю при регистрации по реферальной ссылке (в RUB)</small>
+                    </div>
+                </div>
+                
+                <div class="section">
+                    <h2 class="section-title">💳 Настройки пополнения баланса</h2>
+                    <div class="form-group">
+                        <label for="min_topup_amount_cents">Минимальная сумма пополнения (RUB)</label>
+                        <input type="number" step="0.01" id="min_topup_amount_cents" name="min_topup_amount_cents" value="{{ (settings.get('min_topup_amount_cents', '10000') | int) / 100 }}" placeholder="100.00">
+                        <small>Минимальная сумма, которую пользователь может пополнить на баланс (в RUB)</small>
+                    </div>
+                    <div class="form-group">
+                        <label for="max_topup_amount_cents">Максимальная сумма пополнения (RUB)</label>
+                        <input type="number" step="0.01" id="max_topup_amount_cents" name="max_topup_amount_cents" value="{{ (settings.get('max_topup_amount_cents', '10000000') | int) / 100 }}" placeholder="100000.00">
+                        <small>Максимальная сумма, которую пользователь может пополнить за один раз (в RUB). Оставьте пустым для снятия ограничения.</small>
+                    </div>
+                </div>
+                
+                <div class="section">
+                    <h2 class="section-title">🔔 Настройки уведомлений</h2>
+                    <div class="form-group">
+                        <label for="notify_on_payment">Уведомлять о платежах</label>
+                        <select id="notify_on_payment" name="notify_on_payment">
+                            <option value="true" {% if settings.get('notify_on_payment', 'true') == 'true' %}selected{% endif %}>Включено</option>
+                            <option value="false" {% if settings.get('notify_on_payment', 'true') == 'false' %}selected{% endif %}>Выключено</option>
+                        </select>
+                        <small>Отправлять ли пользователям уведомления о успешных платежах</small>
+                    </div>
+                    <div class="form-group">
+                        <label for="notify_on_subscription">Уведомлять о подписках</label>
+                        <select id="notify_on_subscription" name="notify_on_subscription">
+                            <option value="true" {% if settings.get('notify_on_subscription', 'true') == 'true' %}selected{% endif %}>Включено</option>
+                            <option value="false" {% if settings.get('notify_on_subscription', 'true') == 'false' %}selected{% endif %}>Выключено</option>
+                        </select>
+                        <small>Отправлять ли пользователям уведомления об активации/продлении подписок</small>
+                    </div>
+                    <div class="form-group">
+                        <label for="notify_on_referral">Уведомлять о реферальных наградах</label>
+                        <select id="notify_on_referral" name="notify_on_referral">
+                            <option value="true" {% if settings.get('notify_on_referral', 'true') == 'true' %}selected{% endif %}>Включено</option>
+                            <option value="false" {% if settings.get('notify_on_referral', 'true') == 'false' %}selected{% endif %}>Выключено</option>
+                        </select>
+                        <small>Отправлять ли пользователям уведомления о получении реферальных наград</small>
+                    </div>
+                </div>
+                
+                <div class="section">
+                    <h2 class="section-title">⚙️ Дополнительные настройки</h2>
+                    <div class="form-group">
+                        <label for="trial_days">Длительность пробного периода (дней)</label>
+                        <input type="number" id="trial_days" name="trial_days" value="{{ settings.get('trial_days', '7') }}" placeholder="7" min="0" max="30">
+                        <small>Количество дней бесплатного пробного периода для новых пользователей</small>
+                    </div>
+                    <div class="form-group">
+                        <label for="auto_extend_subscription">Автоматическое продление подписки</label>
+                        <select id="auto_extend_subscription" name="auto_extend_subscription">
+                            <option value="true" {% if settings.get('auto_extend_subscription', 'false') == 'true' %}selected{% endif %}>Включено</option>
+                            <option value="false" {% if settings.get('auto_extend_subscription', 'false') == 'false' %}selected{% endif %}>Выключено</option>
+                        </select>
+                        <small>Автоматически продлевать подписку при наличии достаточного баланса</small>
+                    </div>
+                </div>
+                
+                <div style="text-align:right; margin-top:30px;">
+                    <button type="submit" class="btn btn-primary" style="background:#667eea; color:white;">💾 Сохранить настройки</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    
+    <script>
+        // CSRF защита
+        document.querySelector('form').addEventListener('submit', (e) => {
+            e.preventDefault();
+            const form = e.target;
+            const formData = new FormData(form);
+            fetch(form.action, {
+                method: 'POST',
+                body: formData,
+                headers: { 'X-CSRF-Token': formData.get('csrf_token') }
+            }).then(() => window.location.reload());
+        });
+    </script>
+    
+    <!-- Индикатор загрузки -->
+    <div class="loading-overlay show" id="loading-overlay">
+        <div style="text-align: center;">
+            <div class="loading-spinner"></div>
+            <div class="loading-text">Загрузка...</div>
+        </div>
+    </div>
+    
+    <script>
+        // Универсальный скрипт для управления оверлеем загрузки
+        (function() {
+            const loadingOverlay = document.getElementById('loading-overlay');
+            
+            function hideOverlay() {
+                if (loadingOverlay) {
+                    loadingOverlay.classList.remove('show');
+                    document.body.classList.remove('loading');
+                }
+            }
+            
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', hideOverlay);
+            } else {
+                hideOverlay();
+            }
+            
+            window.addEventListener('load', hideOverlay);
+            
+            // Обрабатываем навигацию назад/вперед (когда страница загружается из кэша)
+            window.addEventListener('pageshow', function(event) {
+                if (event.persisted) {
+                    hideOverlay();
+                }
+            });
+            
+            document.addEventListener('DOMContentLoaded', function() {
+                const links = document.querySelectorAll('a[href^="/admin/web"]');
+                
+                links.forEach(link => {
+                    link.addEventListener('click', function(e) {
+                        if (this.hasAttribute('download') || this.target === '_blank' || this.href.includes('/download')) {
+                            if (loadingOverlay) {
+                                loadingOverlay.classList.remove('show');
+                                document.body.classList.remove('loading');
+                            }
+                            return;
+                        }
+                        if (loadingOverlay) {
+                            loadingOverlay.classList.add('show');
+                            document.body.classList.add('loading');
+                        }
+                    });
+                });
+                
+                document.addEventListener('click', function(e) {
+                    const target = e.target.closest('a[href*="/download"]');
+                    if (target && loadingOverlay) {
+                        loadingOverlay.classList.remove('show');
+                        document.body.classList.remove('loading');
+                    }
+                });
+                
+                const forms = document.querySelectorAll('form');
+                forms.forEach(form => {
+                    form.addEventListener('submit', function() {
+                        if (loadingOverlay) {
+                            loadingOverlay.classList.add('show');
+                            document.body.classList.add('loading');
+                        }
+                    });
+                });
+            });
+        })();
+    </script>
+</body>
+</html>
+

@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="{{ csrf_token }}">
+    <title>Резервные копии - Админ-панель</title>
+    <link rel="stylesheet" href="/static/loading.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+        
+        .header h1 {
+            font-size: 2em;
+            margin: 0;
+        }
+        
+        .header-actions {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.95em;
+            text-decoration: none;
+            display: inline-block;
+            transition: all 0.3s;
+        }
+        
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+        
+        .btn-primary:hover {
+            background: #5568d3;
+        }
+        
+        .btn-secondary {
+            background: rgba(255,255,255,0.2);
+            color: white;
+            border: 1px solid rgba(255,255,255,0.3);
+        }
+        
+        .btn-secondary:hover {
+            background: rgba(255,255,255,0.3);
+        }
+        
+        .btn-success {
+            background: #27ae60;
+            color: white;
+        }
+        
+        .btn-success:hover {
+            background: #229954;
+        }
+        
+        .content {
+            padding: 30px;
+        }
+        
+        .section {
+            margin-bottom: 30px;
+        }
+        
+        .section-title {
+            font-size: 1.5em;
+            margin-bottom: 20px;
+            color: #333;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background: white;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        
+        thead {
+            background: #f8f9fa;
+        }
+        
+        th, td {
+            padding: 12px 15px;
+            text-align: left;
+            border-bottom: 1px solid #e9ecef;
+        }
+        
+        th {
+            font-weight: 600;
+            color: #495057;
+        }
+        
+        tbody tr:hover {
+            background: #f8f9fa;
+        }
+        
+        .badge {
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.85em;
+            font-weight: 500;
+        }
+        
+        .badge-success {
+            background: #d4edda;
+            color: #155724;
+        }
+        
+        .badge-danger {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        
+        .badge-warning {
+            background: #fff3cd;
+            color: #856404;
+        }
+        
+        .alert {
+            padding: 15px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+        }
+        
+        .alert-success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        
+        .alert-error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+    </style>
+</head>
+<body>
+    <!-- Индикатор загрузки (показывается сразу при загрузке страницы) -->
+    <div class="loading-overlay show" id="loading-overlay">
+        <div style="text-align: center;">
+            <div class="loading-spinner"></div>
+            <div class="loading-text">Загрузка...</div>
+        </div>
+    </div>
+    
+    <div class="container">
+        <div class="header">
+            <h1>💾 Резервные копии</h1>
+            <div class="header-actions">
+                <a href="/admin/web/dashboard" class="btn btn-secondary">📊 Дашборд</a>
+                <a href="/admin/web/users" class="btn btn-secondary">👥 Пользователи</a>
+                <a href="/admin/web/tickets" class="btn btn-secondary">🧾 Тикеты</a>
+                <a href="/admin/web/settings" class="btn btn-secondary">⚙️ Настройки</a>
+            </div>
+        </div>
+        
+        <div class="content">
+            {% if request.query_params.get("success") == "backup_started" %}
+            <div class="alert alert-success">
+                ✅ Резервная копия запущена. Она будет создана в фоновом режиме.
+            </div>
+            {% endif %}
+            
+            <div class="section">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                    <h2 class="section-title">Список резервных копий</h2>
+                    <form id="createBackupForm" method="post" action="/admin/web/backups/create" style="display: inline;">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                        <button type="submit" class="btn btn-success">➕ Создать бэкап</button>
+                    </form>
+                </div>
+                
+                <table>
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Тип</th>
+                            <th>Размер</th>
+                            <th>Статус</th>
+                            <th>Создан</th>
+                            <th>Действия</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% if backups %}
+                        {% for backup in backups %}
+                        <tr>
+                            <td>{{ backup.id }}</td>
+                            <td>
+                                {% if backup.backup_type == "database" %}
+                                🗄️ База данных
+                                {% else %}
+                                {{ backup.backup_type }}
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if backup.file_size_mb > 0 %}
+                                {{ "%.2f"|format(backup.file_size_mb) }} MB
+                                {% else %}
+                                —
+                                {% endif %}
+                            </td>
+                            <td>
+                                <span class="badge {% if backup.status == 'completed' %}badge-success{% elif backup.status == 'failed' %}badge-danger{% else %}badge-warning{% endif %}">
+                                    {% if backup.status == "completed" %}
+                                    ✅ Завершен
+                                    {% elif backup.status == "failed" %}
+                                    ❌ Ошибка
+                                    {% else %}
+                                    ⏳ В процессе
+                                    {% endif %}
+                                </span>
+                                {% if backup.error_message %}
+                                <br><small style="color: #721c24;">{{ backup.error_message }}</small>
+                                {% endif %}
+                            </td>
+                            <td>{{ backup.created_at }}</td>
+                            <td>
+                                <div style="display: flex; gap: 5px; flex-wrap: wrap;">
+                                    {% if backup.status == "completed" %}
+                                    <a href="/admin/web/backups/{{ backup.id }}/download" class="btn btn-primary" style="padding: 5px 10px; font-size: 0.9em;">⬇️ Скачать</a>
+                                    <button onclick="restoreBackup({{ backup.id }})" class="btn btn-success" style="padding: 5px 10px; font-size: 0.9em; cursor: pointer;">🔄 Восстановить</button>
+                                    {% endif %}
+                                    <button onclick="deleteBackup({{ backup.id }})" class="btn" style="padding: 5px 10px; font-size: 0.9em; cursor: pointer; background: #dc3545; color: white; border: none; border-radius: 4px;">🗑️ Удалить</button>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                        {% else %}
+                        <tr>
+                            <td colspan="6" style="text-align: center; color: #666; padding: 40px;">
+                                Резервные копии еще не создавались
+                            </td>
+                        </tr>
+                        {% endif %}
+                    </tbody>
+                </table>
+            </div>
+            
+            <div class="section">
+                <h3 style="margin-bottom: 15px; color: #666;">ℹ️ Информация</h3>
+                <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; color: #495057;">
+                    <p style="margin-bottom: 10px;"><strong>Автоматические бэкапы:</strong> Создаются автоматически раз в сутки.</p>
+                    <p style="margin-bottom: 10px;"><strong>Хранение:</strong> Сохраняются последние 10 бэкапов. Старые удаляются автоматически.</p>
+                    <p><strong>Формат:</strong> PostgreSQL custom format (сжатый).</p>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // Обработка формы создания бэкапа
+        document.getElementById('createBackupForm')?.addEventListener('submit', async function(e) {
+            e.preventDefault();
+            const form = e.target;
+            const formData = new FormData(form);
+            const csrfToken = formData.get('csrf_token');
+            const loadingOverlay = document.getElementById('loading-overlay');
+            
+            if (loadingOverlay) {
+                loadingOverlay.classList.add('show');
+                document.body.classList.add('loading');
+            }
+            
+            try {
+                const response = await fetch(form.action, {
+                    method: 'POST',
+                    headers: { 'X-CSRF-Token': csrfToken },
+                    redirect: 'follow'
+                });
+                
+                if (loadingOverlay) {
+                    loadingOverlay.classList.remove('show');
+                    document.body.classList.remove('loading');
+                }
+                
+                if (response.redirected) {
+                    window.location.href = response.url;
+                } else if (response.ok) {
+                    window.location.reload();
+                } else {
+                    alert('Ошибка при создании бэкапа');
+                }
+            } catch (error) {
+                if (loadingOverlay) {
+                    loadingOverlay.classList.remove('show');
+                    document.body.classList.remove('loading');
+                }
+                console.error('Error:', error);
+                alert('Ошибка при создании бэкапа');
+            }
+        });
+        
+        // Функция восстановления из бэкапа
+        function restoreBackup(backupId) {
+            if (!confirm('⚠️ ВНИМАНИЕ! Восстановление из бэкапа полностью заменит текущую базу данных. Все данные, созданные после этого бэкапа, будут потеряны. Продолжить?')) {
+                return;
+            }
+            
+            if (!confirm('Вы уверены? Это действие необратимо!')) {
+                return;
+            }
+            
+            const loadingOverlay = document.getElementById('loading-overlay');
+            if (loadingOverlay) {
+                loadingOverlay.classList.add('show');
+                document.body.classList.add('loading');
+            }
+            
+            // Получаем CSRF токен
+            let csrfToken = '';
+            const csrfInput = document.querySelector('input[name="csrf_token"]');
+            const csrfMeta = document.querySelector('meta[name="csrf-token"]');
+            if (csrfInput) {
+                csrfToken = csrfInput.value;
+            } else if (csrfMeta) {
+                csrfToken = csrfMeta.content;
+            }
+            
+            fetch(`/admin/web/backups/${backupId}/restore`, {
+                method: 'POST',
+                headers: {
+                    'X-CSRF-Token': csrfToken
+                }
+            })
+            .then(res => {
+                if (loadingOverlay) {
+                    loadingOverlay.classList.remove('show');
+                    document.body.classList.remove('loading');
+                }
+                
+                if (res.ok) {
+                    return res.json();
+                } else {
+                    return res.json().then(data => {
+                        throw new Error(data.detail || 'Ошибка восстановления');
+                    });
+                }
+            })
+            .then(data => {
+                if (data.success) {
+                    alert('✅ База данных успешно восстановлена из бэкапа. Страница будет перезагружена.');
+                    setTimeout(() => {
+                        window.location.reload();
+                    }, 2000);
+                } else {
+                    alert('Ошибка: ' + (data.error || 'Неизвестная ошибка'));
+                }
+            })
+            .catch(err => {
+                console.error('Ошибка восстановления:', err);
+                alert('Ошибка восстановления: ' + err.message);
+            });
+        }
+        
+        function deleteBackup(backupId) {
+            if (!confirm('⚠️ Вы уверены, что хотите удалить этот бэкап? Это действие необратимо!')) {
+                return;
+            }
+            
+            const loadingOverlay = document.getElementById('loading-overlay');
+            if (loadingOverlay) {
+                loadingOverlay.classList.add('show');
+                document.body.classList.add('loading');
+            }
+            
+            // Получаем CSRF токен
+            let csrfToken = '';
+            const csrfInput = document.querySelector('input[name="csrf_token"]');
+            const csrfMeta = document.querySelector('meta[name="csrf-token"]');
+            if (csrfInput) {
+                csrfToken = csrfInput.value;
+            } else if (csrfMeta) {
+                csrfToken = csrfMeta.content;
+            }
+            
+            fetch(`/admin/web/backups/${backupId}/delete`, {
+                method: 'POST',
+                headers: {
+                    'X-CSRF-Token': csrfToken
+                }
+            })
+            .then(res => {
+                if (loadingOverlay) {
+                    loadingOverlay.classList.remove('show');
+                    document.body.classList.remove('loading');
+                }
+                
+                if (res.ok) {
+                    return res.json();
+                } else {
+                    return res.json().then(data => {
+                        throw new Error(data.detail || 'Ошибка удаления');
+                    });
+                }
+            })
+            .then(data => {
+                if (data.success) {
+                    alert('✅ Бэкап успешно удален');
+                    window.location.reload();
+                } else {
+                    alert('Ошибка: ' + (data.error || 'Неизвестная ошибка'));
+                }
+            })
+            .catch(err => {
+                console.error('Ошибка удаления:', err);
+                alert('Ошибка удаления: ' + err.message);
+            });
+        }
+        
+        // Автообновление статуса бэкапов каждые 10 секунд
+        setInterval(() => {
+            const inProgress = document.querySelectorAll('.badge-warning');
+            if (inProgress.length > 0) {
+                window.location.reload();
+            }
+        }, 10000);
+        
+        // Скрываем индикатор загрузки после полной загрузки страницы
+        (function() {
+            const loadingOverlay = document.getElementById('loading-overlay');
+            
+            function hideOverlay() {
+                if (loadingOverlay) {
+                    loadingOverlay.classList.remove('show');
+                    document.body.classList.remove('loading');
+                }
+            }
+            
+            // Скрываем сразу, если страница уже загружена
+            if (document.readyState === 'complete') {
+                setTimeout(hideOverlay, 100);
+            } else {
+                if (document.readyState === 'loading') {
+                    document.addEventListener('DOMContentLoaded', function() {
+                        setTimeout(hideOverlay, 100);
+                    });
+                }
+                window.addEventListener('load', function() {
+                    setTimeout(hideOverlay, 100);
+                });
+            }
+            
+            // Обрабатываем навигацию назад/вперед (когда страница загружается из кэша)
+            window.addEventListener('pageshow', function(event) {
+                if (event.persisted) {
+                    hideOverlay();
+                }
+            });
+            
+            // Показываем индикатор загрузки при переходах
+            document.addEventListener('DOMContentLoaded', function() {
+                const links = document.querySelectorAll('a[href^="/admin/web"]');
+                
+                links.forEach(link => {
+                    link.addEventListener('click', function(e) {
+                        // Не показываем оверлей для ссылок на скачивание
+                        if (this.hasAttribute('download') || this.target === '_blank' || this.href.includes('/download')) {
+                            // Скрываем оверлей если он был показан
+                            if (loadingOverlay) {
+                                loadingOverlay.classList.remove('show');
+                                document.body.classList.remove('loading');
+                            }
+                            return;
+                        }
+                        if (loadingOverlay) {
+                            loadingOverlay.classList.add('show');
+                            document.body.classList.add('loading');
+                        }
+                    });
+                });
+                
+                // Обработка скачивания файлов - используем делегирование событий
+                document.addEventListener('click', function(e) {
+                    const target = e.target.closest('a[href*="/download"]');
+                    if (target) {
+                        // Сразу скрываем оверлей при клике на ссылку скачивания
+                        if (loadingOverlay) {
+                            loadingOverlay.classList.remove('show');
+                            document.body.classList.remove('loading');
+                        }
+                    }
+                });
+                
+                const forms = document.querySelectorAll('form');
+                forms.forEach(form => {
+                    form.addEventListener('submit', function() {
+                        if (loadingOverlay) {
+                            loadingOverlay.classList.add('show');
+                            document.body.classList.add('loading');
+                        }
+                    });
+                });
+            });
+        })();
+    </script>
+</body>
+</html>
+

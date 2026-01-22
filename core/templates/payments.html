@@ -1,0 +1,526 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Платежи - Админ-панель</title>
+    <link rel="stylesheet" href="/static/loading.css">
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            overflow: hidden;
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+        .header h1 {
+            font-size: 2em;
+            margin: 0;
+        }
+        .header-actions {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        .btn {
+            border: none;
+            padding: 8px 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            text-decoration: none;
+            display: inline-block;
+        }
+        .btn-primary { background: rgba(255,255,255,0.2); color: white; }
+        .btn-primary:hover { background: rgba(255,255,255,0.3); }
+        .btn-muted { background: #e9ecef; color: #333; }
+        .topbar {
+            padding: 16px 28px;
+            border-bottom: 1px solid #eef1f5;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+        .filters {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        .input, .select {
+            padding: 6px 8px;
+            border: 1px solid #e1e5ea;
+            border-radius: 8px;
+            font-size: 0.9em;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        th, td {
+            padding: 12px;
+            border-bottom: 1px solid #eef1f5;
+            text-align: left;
+        }
+        thead {
+            background: #f8f9fb;
+        }
+        tbody tr:hover {
+            background: #f8f9fb;
+        }
+        .badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 10px;
+            font-size: 0.75em;
+            font-weight: 600;
+        }
+        .badge-success {
+            background: #28a745;
+            color: white;
+        }
+        .badge-pending {
+            background: #ffc107;
+            color: #856404;
+        }
+        .badge-failed {
+            background: #dc3545;
+            color: white;
+        }
+        .badge-canceled {
+            background: #6c757d;
+            color: white;
+        }
+        .pagination {
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            align-items: center;
+        }
+        .pagination a, .pagination span {
+            padding: 8px 12px;
+            border-radius: 8px;
+            text-decoration: none;
+            background: #f8f9fb;
+            color: #333;
+        }
+        .pagination a:hover {
+            background: #667eea;
+            color: white;
+        }
+        .pagination .current {
+            background: #667eea;
+            color: white;
+        }
+        .pagination .disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        .row-link:hover {
+            background: #f0f0f0 !important;
+        }
+        .overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+        .overlay.show {
+            display: flex;
+        }
+        .modal {
+            background: white;
+            border-radius: 12px;
+            padding: 24px;
+            max-width: 600px;
+            width: 90%;
+            max-height: 90vh;
+            overflow-y: auto;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+        }
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid #eef1f5;
+        }
+        .modal-header h2 {
+            margin: 0;
+            font-size: 1.5em;
+        }
+        .close-btn {
+            background: none;
+            border: none;
+            font-size: 1.5em;
+            cursor: pointer;
+            color: #999;
+            padding: 0;
+            width: 30px;
+            height: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .close-btn:hover {
+            color: #333;
+        }
+        .card {
+            padding: 12px;
+            border: 1px solid #eef1f5;
+            border-radius: 8px;
+            margin-bottom: 12px;
+        }
+        .card .label {
+            font-size: 0.85em;
+            color: #666;
+            margin-bottom: 4px;
+        }
+        .card .value {
+            font-size: 1em;
+            font-weight: 600;
+            color: #333;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>💳 Платежи</h1>
+            <div class="header-actions">
+                <div class="notifications-bell" id="notifications-bell" onclick="toggleNotifications()" title="Уведомления">
+                    🔔
+                    <span class="notifications-badge" id="notifications-badge" style="display:none;">0</span>
+                </div>
+                <a class="btn btn-primary" href="/admin/web/dashboard">📊 Дашборд</a>
+                <a class="btn btn-primary" href="/admin/web/users">👥 Пользователи</a>
+                <a class="btn btn-primary" href="/admin/web/payments">💳 Платежи</a>
+                <a class="btn btn-primary" href="/admin/web/tickets">🧾 Тикеты</a>
+                <a class="btn btn-primary" href="/admin/web/logs">📋 Логи</a>
+                <a class="btn btn-primary" href="/admin/web/settings">⚙️ Настройки</a>
+                <a class="btn btn-primary" href="/admin/web/promo-codes">🎟️ Промокоды</a>
+                <a class="btn btn-primary" href="/admin/web/subscription-plans">📦 Тарифы</a>
+                <a class="btn btn-primary" href="/admin/web/backups">💾 Бэкапы</a>
+                <a class="btn btn-muted" href="/admin/logout">🚪 Выйти</a>
+            </div>
+        </div>
+
+        <div class="topbar">
+            <div class="filters">
+                <label>Статус:</label>
+                <select class="select" id="status-filter" onchange="applyFilters()">
+                    <option value="all" {% if status_filter == "all" %}selected{% endif %}>Все</option>
+                    <option value="succeeded" {% if status_filter == "succeeded" %}selected{% endif %}>Успешные</option>
+                    <option value="pending" {% if status_filter == "pending" %}selected{% endif %}>В ожидании</option>
+                    <option value="failed" {% if status_filter == "failed" %}selected{% endif %}>Неудачные</option>
+                    <option value="canceled" {% if status_filter == "canceled" %}selected{% endif %}>Отмененные</option>
+                </select>
+                <label>Провайдер:</label>
+                <select class="select" id="provider-filter" onchange="applyFilters()">
+                    <option value="all" {% if provider_filter == "all" %}selected{% endif %}>Все</option>
+                    <option value="telegram_stars" {% if provider_filter == "telegram_stars" %}selected{% endif %}>Telegram Stars</option>
+                    <option value="cryptobot" {% if provider_filter == "cryptobot" %}selected{% endif %}>CryptoBot</option>
+                </select>
+            </div>
+            <div>
+                <strong>Всего: {{ total }}</strong>
+            </div>
+        </div>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Пользователь</th>
+                    <th>Провайдер</th>
+                    <th>Сумма</th>
+                    <th>Статус</th>
+                    <th>Дата</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% if payments %}
+                    {% for payment in payments %}
+                    <tr class="row-link" style="cursor: pointer;" onclick="showPaymentDetail({{ payment.id }})">
+                        <td>{{ payment.id }}</td>
+                        <td>
+                            <a href="/admin/web/user/{{ payment.user_tg_id }}" style="color: #667eea; text-decoration: none;" onclick="event.stopPropagation();">
+                                {{ payment.user_tg_id }}
+                            </a>
+                        </td>
+                        <td>
+                            {% if payment.provider == "telegram_stars" %}
+                                ⭐ Stars
+                            {% elif payment.provider == "cryptobot" %}
+                                💎 CryptoBot
+                            {% else %}
+                                {{ payment.provider }}
+                            {% endif %}
+                        </td>
+                        <td><strong>{{ "%.2f"|format(payment.amount) }} {{ payment.currency }}</strong></td>
+                        <td>
+                            <span class="badge badge-{{ payment.status }}">
+                                {% if payment.status == "succeeded" %}
+                                    ✅ Успешно
+                                {% elif payment.status == "pending" %}
+                                    ⏳ В ожидании
+                                {% elif payment.status == "failed" %}
+                                    ❌ Неудачно
+                                {% elif payment.status == "canceled" %}
+                                    🚫 Отменено
+                                {% else %}
+                                    {{ payment.status }}
+                                {% endif %}
+                            </span>
+                        </td>
+                        <td>{{ payment.created_at }}</td>
+                    </tr>
+                    {% endfor %}
+                {% else %}
+                    <tr>
+                        <td colspan="6" style="text-align: center; padding: 40px; color: #999;">
+                            Платежей не найдено
+                        </td>
+                    </tr>
+                {% endif %}
+            </tbody>
+        </table>
+
+        <div class="pagination">
+            {% if has_prev %}
+                <a href="?page={{ page - 1 }}{% if status_filter != 'all' %}&status={{ status_filter }}{% endif %}{% if provider_filter != 'all' %}&provider={{ provider_filter }}{% endif %}">⬅️ Назад</a>
+            {% else %}
+                <span class="disabled">⬅️ Назад</span>
+            {% endif %}
+            <span class="current">Страница {{ page }}</span>
+            {% if has_next %}
+                <a href="?page={{ page + 1 }}{% if status_filter != 'all' %}&status={{ status_filter }}{% endif %}{% if provider_filter != 'all' %}&provider={{ provider_filter }}{% endif %}">Вперед ➡️</a>
+            {% else %}
+                <span class="disabled">Вперед ➡️</span>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Модальное окно для деталей платежа -->
+    <div class="overlay" id="modal-payment-detail">
+        <div class="modal">
+            <div class="modal-header">
+                <h2>💳 Детали платежа</h2>
+                <button class="close-btn" onclick="closeModal('modal-payment-detail')">×</button>
+            </div>
+            <div id="payment-detail-content">
+                <div style="text-align: center; padding: 40px;">Загрузка...</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function applyFilters() {
+            const status = document.getElementById('status-filter').value;
+            const provider = document.getElementById('provider-filter').value;
+            const params = new URLSearchParams();
+            if (status !== 'all') params.set('status', status);
+            if (provider !== 'all') params.set('provider', provider);
+            window.location.href = '/admin/web/payments?' + params.toString();
+        }
+
+        function openModal(modalId) {
+            const modal = document.getElementById(modalId);
+            if (modal) {
+                modal.classList.add('show');
+            }
+        }
+
+        function closeModal(modalId) {
+            const modal = document.getElementById(modalId);
+            if (modal) {
+                modal.classList.remove('show');
+            }
+        }
+
+        // Закрытие модального окна при клике на overlay
+        document.addEventListener('DOMContentLoaded', function() {
+            const modal = document.getElementById('modal-payment-detail');
+            if (modal) {
+                modal.addEventListener('click', function(e) {
+                    if (e.target === this) {
+                        closeModal('modal-payment-detail');
+                    }
+                });
+            }
+        });
+
+        // Показать детали платежа
+        function showPaymentDetail(paymentId) {
+            fetch(`/api/payments/${paymentId}`)
+                .then(res => res.json())
+                .then(payment => {
+                    const content = document.getElementById('payment-detail-content');
+                    const amountRub = (payment.amount_cents / 100).toFixed(2);
+                    const statusBadge = payment.status === 'succeeded' ? 'badge-success' : 
+                                       payment.status === 'pending' ? 'badge-pending' : 
+                                       'badge-failed';
+                    const statusText = payment.status === 'succeeded' ? '✅ Успешно' : 
+                                      payment.status === 'pending' ? '⏳ В ожидании' : 
+                                      payment.status === 'failed' ? '❌ Неудачно' : 
+                                      payment.status === 'canceled' ? '🚫 Отменено' : payment.status;
+                    
+                    // Извлекаем полезные данные из raw_response
+                    let extraInfo = '';
+                    let rawResponseData = null;
+                    
+                    if (payment.raw_response) {
+                        try {
+                            rawResponseData = JSON.parse(payment.raw_response);
+                            
+                            // Для CryptoBot
+                            if (payment.provider === 'cryptobot' && rawResponseData) {
+                                const invoice = rawResponseData.invoice || rawResponseData.result || rawResponseData;
+                                if (invoice) {
+                                    extraInfo += `
+                                        <div class="card">
+                                            <div class="label">Invoice ID</div>
+                                            <div class="value">${invoice.invoice_id || invoice.id || '—'}</div>
+                                        </div>
+                                    `;
+                                    if (invoice.paid_at) {
+                                        extraInfo += `
+                                            <div class="card">
+                                                <div class="label">Дата оплаты</div>
+                                                <div class="value">${new Date(invoice.paid_at).toLocaleString('ru-RU')}</div>
+                                            </div>
+                                        `;
+                                    }
+                                    if (invoice.paid_amount) {
+                                        extraInfo += `
+                                            <div class="card">
+                                                <div class="label">Оплачено</div>
+                                                <div class="value">${invoice.paid_amount} ${invoice.paid_asset || invoice.asset || ''}</div>
+                                            </div>
+                                        `;
+                                    }
+                                    if (invoice.fee_amount) {
+                                        extraInfo += `
+                                            <div class="card">
+                                                <div class="label">Комиссия</div>
+                                                <div class="value">${invoice.fee_amount} ${invoice.fee_asset || ''}</div>
+                                            </div>
+                                        `;
+                                    }
+                                    if (invoice.bot_invoice_url || invoice.pay_url) {
+                                        const invoiceUrl = invoice.bot_invoice_url || invoice.pay_url;
+                                        extraInfo += `
+                                            <div class="card">
+                                                <div class="label">Ссылка на инвойс</div>
+                                                <div class="value"><a href="${invoiceUrl}" target="_blank" style="color: #667eea; text-decoration: none; word-break: break-all;">${invoiceUrl}</a></div>
+                                            </div>
+                                        `;
+                                    }
+                                }
+                            }
+                            
+                            // Для Telegram Stars
+                            if (payment.provider === 'telegram_stars' && rawResponseData) {
+                                if (rawResponseData.telegram_payment_charge_id) {
+                                    extraInfo += `
+                                        <div class="card">
+                                            <div class="label">Telegram Charge ID</div>
+                                            <div class="value">${rawResponseData.telegram_payment_charge_id}</div>
+                                        </div>
+                                    `;
+                                }
+                                if (rawResponseData.provider_payment_charge_id) {
+                                    extraInfo += `
+                                        <div class="card">
+                                            <div class="label">Provider Charge ID</div>
+                                            <div class="value">${rawResponseData.provider_payment_charge_id}</div>
+                                        </div>
+                                    `;
+                                }
+                            }
+                        } catch (e) {
+                            console.error('Error parsing raw_response:', e);
+                        }
+                    }
+                    
+                    content.innerHTML = `
+                        <div style="display: grid; gap: 12px;">
+                            <div class="card">
+                                <div class="label">ID платежа</div>
+                                <div class="value">${payment.id}</div>
+                            </div>
+                            <div class="card">
+                                <div class="label">Провайдер</div>
+                                <div class="value">${payment.provider || '—'}</div>
+                            </div>
+                            <div class="card">
+                                <div class="label">Сумма</div>
+                                <div class="value">${amountRub} RUB</div>
+                            </div>
+                            <div class="card">
+                                <div class="label">Валюта</div>
+                                <div class="value">${payment.currency || '—'}</div>
+                            </div>
+                            <div class="card">
+                                <div class="label">Статус</div>
+                                <div class="value"><span class="badge ${statusBadge}">${statusText}</span></div>
+                            </div>
+                            <div class="card">
+                                <div class="label">External ID</div>
+                                <div class="value">${payment.external_id || '—'}</div>
+                            </div>
+                            <div class="card">
+                                <div class="label">Создан</div>
+                                <div class="value">${payment.created_at || '—'}</div>
+                            </div>
+                            ${extraInfo}
+                            ${payment.raw_response ? `
+                            <div class="card">
+                                <div class="label" style="cursor: pointer; user-select: none;" onclick="this.nextElementSibling.style.display = this.nextElementSibling.style.display === 'none' ? 'block' : 'none'; this.textContent = this.nextElementSibling.style.display === 'none' ? 'Raw Response (развернуть)' : 'Raw Response (свернуть)'">
+                                    Raw Response (развернуть)
+                                </div>
+                                <div class="value" style="font-family: monospace; font-size: 0.75em; word-break: break-all; max-height: 300px; overflow-y: auto; background: #f8f9fa; padding: 8px; border-radius: 4px; display: none;">
+                                    <pre style="margin: 0; white-space: pre-wrap;">${JSON.stringify(rawResponseData || JSON.parse(payment.raw_response), null, 2)}</pre>
+                                </div>
+                            </div>
+                            ` : ''}
+                        </div>
+                    `;
+                    openModal('modal-payment-detail');
+                })
+                .catch(err => {
+                    console.error('Ошибка загрузки деталей платежа:', err);
+                    alert('Ошибка загрузки деталей платежа');
+                });
+        }
+    </script>
+</body>
+</html>
+

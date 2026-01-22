@@ -1,0 +1,555 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Промокоды - Админ-панель</title>
+    <link rel="stylesheet" href="/static/loading.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+        
+        .header h1 {
+            font-size: 2em;
+            margin: 0;
+        }
+        
+        .header-actions {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            text-decoration: none;
+            display: inline-block;
+            transition: all 0.3s;
+        }
+        
+        .btn-primary { background: rgba(255,255,255,0.2); color: white; }
+        .btn-primary:hover { background: rgba(255,255,255,0.3); }
+        .btn-muted { background: #e9ecef; color: #333; }
+        .btn-muted:hover { background: #d6d9dc; }
+        .btn-success { background: #28a745; color: white; }
+        .btn-success:hover { background: #218838; }
+        .btn-danger { background: #dc3545; color: white; }
+        .btn-danger:hover { background: #c82333; }
+        
+        .content {
+            padding: 30px;
+        }
+        
+        .alert {
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        
+        .alert-success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        
+        .alert-error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        
+        .table-container {
+            overflow-x: auto;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+        
+        th {
+            background: #f8f9fa;
+            font-weight: 600;
+            color: #333;
+        }
+        
+        tr:hover {
+            background: #f8f9fa;
+        }
+        
+        .badge {
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.85em;
+            font-weight: 600;
+        }
+        
+        .badge-success { background: #d4edda; color: #155724; }
+        .badge-danger { background: #f8d7da; color: #721c24; }
+        
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            overflow: auto;
+        }
+        
+        .modal-content {
+            background: white;
+            margin: 50px auto;
+            padding: 30px;
+            border-radius: 12px;
+            max-width: 600px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+        }
+        
+        .form-group {
+            margin-bottom: 20px;
+        }
+        
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #333;
+        }
+        
+        .form-group input,
+        .form-group select,
+        .form-group textarea {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 1em;
+            font-family: inherit;
+        }
+        
+        .form-group textarea {
+            min-height: 80px;
+            resize: vertical;
+        }
+        
+        .form-actions {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎟️ Промокоды</h1>
+            <div class="header-actions">
+                <a class="btn btn-primary" href="/admin/web/dashboard">📊 Дашборд</a>
+                <a class="btn btn-primary" href="/admin/web/users">👥 Пользователи</a>
+                <a class="btn btn-primary" href="/admin/web/tickets">🧾 Тикеты</a>
+                <a class="btn btn-primary" href="/admin/web/settings">⚙️ Настройки</a>
+                <button class="btn btn-success" onclick="openCreateModal()">➕ Создать промокод</button>
+                <a class="btn btn-muted" href="/admin/logout">🚪 Выйти</a>
+            </div>
+        </div>
+        
+        <div class="content">
+            {% if request.query_params.get('success') %}
+            <div class="alert alert-success">
+                ✅ {% if request.query_params.get('success') == 'created' %}Промокод успешно создан!{% elif request.query_params.get('success') == 'toggled' %}Статус промокода изменен!{% else %}Операция выполнена успешно!{% endif %}
+            </div>
+            {% endif %}
+            {% if request.query_params.get('error') %}
+            <div class="alert alert-error">
+                ❌ Ошибка: {{ request.query_params.get('error') }}
+            </div>
+            {% endif %}
+            
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Код</th>
+                            <th>Скидка</th>
+                            <th>Использований</th>
+                            <th>Статус</th>
+                            <th>Действителен</th>
+                            <th>Создан</th>
+                            <th>Действия</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for promo in promo_codes %}
+                        <tr onclick="openPromoDetail({{ promo.id }})" style="cursor:pointer;">
+                            <td><strong>{{ promo.code }}</strong></td>
+                            <td>
+                                {% if promo.discount_percent %}
+                                    {{ promo.discount_percent }}%
+                                {% elif promo.discount_amount_cents %}
+                                    {{ (promo.discount_amount_cents / 100) | round(2) }} USD
+                                {% else %}
+                                    —
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if promo.max_uses %}
+                                    {{ promo.used_count }} / {{ promo.max_uses }}
+                                {% else %}
+                                    {{ promo.used_count }} / ∞
+                                {% endif %}
+                            </td>
+                            <td>
+                                <span class="badge {% if promo.is_active %}badge-success{% else %}badge-danger{% endif %}">
+                                    {% if promo.is_active %}Активен{% else %}Неактивен{% endif %}
+                                </span>
+                            </td>
+                            <td>
+                                {% if promo.valid_from or promo.valid_until %}
+                                    {% if promo.valid_from %}{{ promo.valid_from }}{% endif %}
+                                    {% if promo.valid_from and promo.valid_until %} — {% endif %}
+                                    {% if promo.valid_until %}{{ promo.valid_until }}{% endif %}
+                                {% else %}
+                                    Всегда
+                                {% endif %}
+                            </td>
+                            <td>{{ promo.created_at }}</td>
+                            <td>
+                                <form method="post" action="/admin/web/promo-codes/{{ promo.id }}/toggle" style="display:inline;" onclick="event.stopPropagation();">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                    <button type="submit" class="btn {% if promo.is_active %}btn-danger{% else %}btn-success{% endif %}" style="padding:5px 10px;font-size:0.9em;">
+                                        {% if promo.is_active %}Деактивировать{% else %}Активировать{% endif %}
+                                    </button>
+                                </form>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                        {% if not promo_codes %}
+                        <tr>
+                            <td colspan="7" style="text-align:center;padding:40px;color:#666;">
+                                Промокоды не найдены. Создайте первый промокод!
+                            </td>
+                        </tr>
+                        {% endif %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Modal для деталей промокода -->
+    <div id="detailModal" class="modal">
+        <div class="modal-content">
+            <h2 style="margin-bottom:20px;">🎟️ Детали промокода</h2>
+            <div id="promoDetailContent">
+                <p>Загрузка...</p>
+            </div>
+            <div class="form-actions">
+                <button type="button" class="btn btn-muted" onclick="closeDetailModal()">Закрыть</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Modal для создания промокода -->
+    <div id="createModal" class="modal">
+        <div class="modal-content">
+            <h2 style="margin-bottom:20px;">Создать промокод</h2>
+            <form method="post" action="/admin/web/promo-codes/create" id="createForm">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                
+                <div class="form-group">
+                    <label for="code">Код промокода *</label>
+                    <input type="text" id="code" name="code" required placeholder="PROMO2024" style="text-transform:uppercase;">
+                </div>
+                
+                <div class="form-group">
+                    <label for="discount_type">Тип скидки *</label>
+                    <select id="discount_type" name="discount_type" required onchange="updateDiscountInput()">
+                        <option value="percent">Процент (%)</option>
+                        <option value="amount">Фиксированная сумма (USD)</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label for="discount_value" id="discount_label">Значение скидки *</label>
+                    <input type="number" id="discount_value" name="discount_value" required step="0.01" min="0" placeholder="10">
+                </div>
+                
+                <div class="form-group">
+                    <label for="max_uses">Максимальное количество использований</label>
+                    <input type="number" id="max_uses" name="max_uses" min="1" placeholder="Оставьте пустым для неограниченного">
+                </div>
+                
+                <div class="form-group">
+                    <label for="valid_from">Действителен с</label>
+                    <input type="datetime-local" id="valid_from" name="valid_from">
+                </div>
+                
+                <div class="form-group">
+                    <label for="valid_until">Действителен до</label>
+                    <input type="datetime-local" id="valid_until" name="valid_until">
+                </div>
+                
+                <div class="form-group">
+                    <label for="description">Описание</label>
+                    <textarea id="description" name="description" placeholder="Описание промокода (необязательно)"></textarea>
+                </div>
+                
+                <div class="form-actions">
+                    <button type="button" class="btn btn-muted" onclick="closeCreateModal()">Отмена</button>
+                    <button type="submit" class="btn btn-success">Создать</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    
+    <script>
+        function openCreateModal() {
+            document.getElementById('createModal').style.display = 'block';
+        }
+        
+        function closeCreateModal() {
+            document.getElementById('createModal').style.display = 'none';
+        }
+        
+        function openPromoDetail(promoId) {
+            document.getElementById('detailModal').style.display = 'block';
+            document.getElementById('promoDetailContent').innerHTML = '<p>Загрузка...</p>';
+            
+            fetch(`/admin/web/api/promo-codes/${promoId}`)
+                .then(response => response.json())
+                .then(data => {
+                    let html = `
+                        <div style="margin-bottom:20px;">
+                            <h3 style="margin-bottom:10px;">Код: <strong>${data.code}</strong></h3>
+                            <p><strong>Скидка:</strong> ${data.discount_percent ? data.discount_percent + '%' : (data.discount_amount_cents / 100).toFixed(2) + ' USD'}</p>
+                            <p><strong>Использований:</strong> ${data.used_count}${data.max_uses ? ' / ' + data.max_uses : ' / ∞'}</p>
+                            <p><strong>Статус:</strong> <span class="badge ${data.is_active ? 'badge-success' : 'badge-danger'}">${data.is_active ? 'Активен' : 'Неактивен'}</span></p>
+                            ${data.valid_from || data.valid_until ? `<p><strong>Действителен:</strong> ${data.valid_from || '—'} ${data.valid_until ? '— ' + data.valid_until : ''}</p>` : '<p><strong>Действителен:</strong> Всегда</p>'}
+                            <p><strong>Создан:</strong> ${data.created_at}</p>
+                            ${data.created_by ? `<p><strong>Создал:</strong> ${data.created_by.first_name || ''} ${data.created_by.username ? '(@' + data.created_by.username + ')' : ''} (ID: ${data.created_by.tg_id})</p>` : ''}
+                            ${data.description ? `<p><strong>Описание:</strong> ${data.description}</p>` : ''}
+                        </div>
+                    `;
+                    
+                    if (data.usages && data.usages.length > 0) {
+                        html += `
+                            <div style="margin-top:20px;">
+                                <h4 style="margin-bottom:10px;">История использований (${data.usages.length}):</h4>
+                                <div style="max-height:300px;overflow-y:auto;">
+                                    <table style="width:100%;font-size:0.9em;">
+                                        <thead>
+                                            <tr>
+                                                <th>Пользователь</th>
+                                                <th>Скидка</th>
+                                                <th>Дата</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                        `;
+                        data.usages.forEach(usage => {
+                            html += `
+                                <tr>
+                                    <td>${usage.first_name || '—'} ${usage.username ? '(@' + usage.username + ')' : ''}<br><small>ID: ${usage.user_tg_id}</small></td>
+                                    <td>${usage.discount_amount.toFixed(2)} USD</td>
+                                    <td>${usage.used_at}</td>
+                                </tr>
+                            `;
+                        });
+                        html += `
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        `;
+                    } else {
+                        html += '<p style="margin-top:20px;color:#666;">Промокод еще не использовался.</p>';
+                    }
+                    
+                    document.getElementById('promoDetailContent').innerHTML = html;
+                })
+                .catch(error => {
+                    document.getElementById('promoDetailContent').innerHTML = `<p style="color:red;">Ошибка загрузки: ${error}</p>`;
+                });
+        }
+        
+        function closeDetailModal() {
+            document.getElementById('detailModal').style.display = 'none';
+        }
+        
+        function updateDiscountInput() {
+            const type = document.getElementById('discount_type').value;
+            const input = document.getElementById('discount_value');
+            const label = document.getElementById('discount_label');
+            
+            if (type === 'percent') {
+                label.textContent = 'Процент скидки (%) *';
+                input.placeholder = '10';
+                input.step = '1';
+                input.max = '100';
+            } else {
+                label.textContent = 'Сумма скидки (USD) *';
+                input.placeholder = '5.00';
+                input.step = '0.01';
+                input.max = '';
+            }
+        }
+        
+        // Закрытие модального окна при клике вне его
+        window.onclick = function(event) {
+            const createModal = document.getElementById('createModal');
+            const detailModal = document.getElementById('detailModal');
+            if (event.target == createModal) {
+                closeCreateModal();
+            }
+            if (event.target == detailModal) {
+                closeDetailModal();
+            }
+        }
+        
+        // CSRF защита для форм
+        document.querySelectorAll('form').forEach(form => {
+            form.addEventListener('submit', (e) => {
+                e.preventDefault();
+                const formData = new FormData(form);
+                const csrfToken = formData.get('csrf_token');
+                
+                fetch(form.action, {
+                    method: 'POST',
+                    body: formData,
+                    headers: { 'X-CSRF-Token': csrfToken }
+                }).then(response => {
+                    if (response.redirected) {
+                        window.location.href = response.url;
+                    } else {
+                        window.location.reload();
+                    }
+                }).catch(error => {
+                    console.error('Error:', error);
+                    alert('Ошибка при отправке формы');
+                });
+            });
+        });
+    </script>
+    
+    <!-- Индикатор загрузки -->
+    <div class="loading-overlay show" id="loading-overlay">
+        <div style="text-align: center;">
+            <div class="loading-spinner"></div>
+            <div class="loading-text">Загрузка...</div>
+        </div>
+    </div>
+    
+    <script>
+        // Универсальный скрипт для управления оверлеем загрузки
+        (function() {
+            const loadingOverlay = document.getElementById('loading-overlay');
+            
+            function hideOverlay() {
+                if (loadingOverlay) {
+                    loadingOverlay.classList.remove('show');
+                    document.body.classList.remove('loading');
+                }
+            }
+            
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', hideOverlay);
+            } else {
+                hideOverlay();
+            }
+            
+            window.addEventListener('load', hideOverlay);
+            
+            // Обрабатываем навигацию назад/вперед (когда страница загружается из кэша)
+            window.addEventListener('pageshow', function(event) {
+                if (event.persisted) {
+                    hideOverlay();
+                }
+            });
+            
+            document.addEventListener('DOMContentLoaded', function() {
+                const links = document.querySelectorAll('a[href^="/admin/web"]');
+                
+                links.forEach(link => {
+                    link.addEventListener('click', function(e) {
+                        if (this.hasAttribute('download') || this.target === '_blank' || this.href.includes('/download')) {
+                            if (loadingOverlay) {
+                                loadingOverlay.classList.remove('show');
+                                document.body.classList.remove('loading');
+                            }
+                            return;
+                        }
+                        if (loadingOverlay) {
+                            loadingOverlay.classList.add('show');
+                            document.body.classList.add('loading');
+                        }
+                    });
+                });
+                
+                document.addEventListener('click', function(e) {
+                    const target = e.target.closest('a[href*="/download"]');
+                    if (target && loadingOverlay) {
+                        loadingOverlay.classList.remove('show');
+                        document.body.classList.remove('loading');
+                    }
+                });
+                
+                const forms = document.querySelectorAll('form');
+                forms.forEach(form => {
+                    form.addEventListener('submit', function() {
+                        if (loadingOverlay) {
+                            loadingOverlay.classList.add('show');
+                            document.body.classList.add('loading');
+                        }
+                    });
+                });
+            });
+        })();
+    </script>
+</body>
+</html>
+

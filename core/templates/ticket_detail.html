@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Тикет #{{ ticket.id }}</title>
+    <link rel="stylesheet" href="/static/loading.css">
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            margin: 0;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            overflow: hidden;
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 24px 28px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        .badge {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 0.85em;
+            font-weight: 700;
+        }
+        .badge-open { background: #d1ecf1; color: #0c5460; }
+        .badge-closed { background: #e9ecef; color: #495057; }
+        .btn {
+            border: none;
+            padding: 8px 12px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 0.9em;
+            text-decoration: none;
+        }
+        .btn-primary { background: #667eea; color: white; }
+        .btn-muted { background: #e9ecef; color: #333; }
+        .section {
+            padding: 20px 24px;
+        }
+        .chat-box {
+            border: 1px solid #eef1f5;
+            border-radius: 10px;
+            padding: 12px;
+            background: #f8f9fb;
+            max-height: 420px;
+            overflow: auto;
+        }
+        .msg {
+            margin-bottom: 12px;
+            padding: 10px;
+            border-radius: 10px;
+            background: white;
+            box-shadow: 0 4px 14px rgba(0,0,0,0.05);
+        }
+        .msg-meta {
+            font-size: 0.85em;
+            color: #666;
+            margin-bottom: 6px;
+        }
+        form textarea {
+            width: 100%;
+            min-height: 120px;
+            border: 1px solid #e1e5ea;
+            border-radius: 8px;
+            padding: 10px;
+            font-size: 0.95em;
+        }
+        form .actions {
+            margin-top: 10px;
+            display: flex;
+            justify-content: flex-end;
+        }
+        .muted { color: #666; }
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 12px;
+        }
+        .card {
+            padding: 12px;
+            border: 1px solid #eef1f5;
+            border-radius: 10px;
+            background: #fdfdff;
+        }
+        .label { font-size: 0.85em; color: #666; margin-bottom: 4px; }
+        .value { font-weight: 600; }
+        .pager { display:flex; gap:8px; margin:12px 0; }
+    </style>
+    <script>
+        // Telegram Login сохраняет сессию; force_reauth=1 заставит подтвердить снова
+        if (new URLSearchParams(window.location.search).get('force_reauth') === '1') {
+            sessionStorage.clear();
+            localStorage.clear();
+        }
+    </script>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div>
+                <div style="font-size:14px; opacity:0.85;">Тикет #{{ ticket.id }}</div>
+                <h2 style="margin:4px 0 0 0;">{{ ticket.topic }}</h2>
+            </div>
+            <div style="display:flex; gap:8px; align-items:center;">
+                <span class="badge {% if ticket.status in ['new','in_progress','open'] %}badge-open{% else %}badge-closed{% endif %}">
+                    {% if ticket.status == 'new' or ticket.status == 'open' %}Создан{% elif ticket.status == 'in_progress' %}В работе{% else %}Закрыт{% endif %}
+                </span>
+                {% if ticket.status in ['new','open'] %}
+                <form method="post" action="/admin/web/tickets/{{ ticket.id }}/status" class="modal-form" data-no-ajax="1" style="margin:0;">
+                    <input type="hidden" name="action" value="take">
+                    <button class="btn btn-muted" type="submit">Взять тикет</button>
+                </form>
+                {% endif %}
+                {% if ticket.status != 'closed' %}
+                <form method="post" action="/admin/web/tickets/{{ ticket.id }}/status" class="modal-form" data-no-ajax="1" style="margin:0;">
+                    <input type="hidden" name="action" value="close">
+                    <button class="btn btn-muted" type="submit">Закрыть</button>
+                </form>
+                {% endif %}
+                <a class="btn btn-muted" href="/admin/web/tickets">← К списку</a>
+            </div>
+        </div>
+
+        <div class="section">
+            <div class="grid">
+                <div class="card">
+                    <div class="label">Пользователь</div>
+                    <div class="value">
+                        <a href="/admin/web/users/{{ ticket.user_tg_id }}" style="color:#667eea; text-decoration:none;">{{ ticket.user_tg_id }}</a>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="label">Создан</div>
+                    <div class="value">{{ ticket.created_at }}</div>
+                </div>
+                <div class="card">
+                    <div class="label">Обновлён</div>
+                    <div class="value">{{ ticket.updated_at }}</div>
+                </div>
+                <div class="card">
+                    <div class="label">Закрыт</div>
+                    <div class="value">{{ ticket.closed_at }}</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h3 style="margin:0 0 12px 0;">Чат тикета</h3>
+            {% if messages %}
+            <div class="pager">
+                {% if has_prev %}<a class="btn btn-muted" href="?page={{ page-1 }}#chat">← Пред.</a>{% endif %}
+                {% if has_next %}<a class="btn btn-muted" href="?page={{ page+1 }}#chat">След. →</a>{% endif %}
+            </div>
+            <div class="chat-box" id="chat">
+                {% for m in messages %}
+                <div class="msg" data-id="{{ m.id }}">
+                    <div class="msg-meta">
+                        {{ m.created_at }} —
+                        {% if m.direction == 'in' %}
+                            Пользователь
+                        {% elif m.direction == 'out' %}
+                            Админ
+                        {% else %}
+                            Система
+                        {% endif %}
+                        {% if m.admin_tg_id %}(id: {{ m.admin_tg_id }}){% endif %}
+                    </div>
+                    <div>{{ m.text }}</div>
+                </div>
+                {% endfor %}
+            </div>
+            <div class="pager" style="margin-top:12px;">
+                {% if has_prev %}<a class="btn btn-muted" href="?page={{ page-1 }}#chat">← Пред.</a>{% endif %}
+                {% if has_next %}<a class="btn btn-muted" href="?page={{ page+1 }}#chat">След. →</a>{% endif %}
+            </div>
+            {% else %}
+            <div class="muted" style="margin-bottom:12px;">Пока нет сообщений</div>
+            {% endif %}
+
+            <form method="post" action="/admin/web/users/message" class="modal-form" style="margin-top:12px;">
+                <input type="hidden" name="tg_id" value="{{ ticket.user_tg_id }}">
+                <input type="hidden" name="ticket_id" value="{{ ticket.id }}">
+                <label class="label" style="display:block; margin-bottom:6px;">Текст сообщения</label>
+                <textarea name="text" placeholder="Сообщение (обяз.)"></textarea>
+                <div class="actions" style="justify-content:space-between;">
+                    <div></div>
+                    <button class="btn btn-primary" type="submit">Отправить</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        const csrfToken = "{{ csrf_token }}";
+        document.querySelectorAll('form[method="post"]').forEach((form) => {
+            if (form.dataset.noAjax) return; // статусные формы — обычный сабмит с кукой
+            form.addEventListener('submit', (e) => {
+                e.preventDefault();
+                const fd = new FormData(form);
+                fetch(form.action, {
+                    method: 'POST',
+                    body: fd,
+                    headers: { 'X-CSRF-Token': csrfToken }
+                }).then(() => window.location.reload());
+            });
+        });
+
+        // --- Автообновление чата тикета ---
+        (function () {
+            const ticketId = {{ ticket.id }};
+            const chatBox = document.getElementById('chat');
+            if (!chatBox) return;
+
+            let lastId = null;
+
+            function appendMessages(msgs) {
+                if (!msgs || !msgs.length) return;
+                msgs.forEach((m) => {
+                    const wrapper = document.createElement('div');
+                    wrapper.className = 'msg';
+                    wrapper.dataset.id = m.id;
+                    let who = 'Система';
+                    if (m.direction === 'in' || m.direction === 'incoming') who = 'Пользователь';
+                    else if (m.direction === 'out' || m.direction === 'outgoing') who = 'Админ';
+                    wrapper.innerHTML = `<div class="msg-meta">${m.created_at} — ${who}${m.admin_tg_id ? ' (id: ' + m.admin_tg_id + ')' : ''}</div>
+                                         <div>${m.text}</div>`;
+                    chatBox.appendChild(wrapper);
+                    lastId = m.id;
+                });
+                chatBox.scrollTop = chatBox.scrollHeight;
+            }
+
+            async function poll() {
+                try {
+                    const params = lastId ? ('?since_id=' + encodeURIComponent(lastId)) : '';
+                    const res = await fetch('/admin/web/api/tickets/' + ticketId + '/messages' + params);
+                    if (!res.ok) return;
+                    const data = await res.json();
+                    appendMessages(data.messages || []);
+                } catch (e) {
+                    // игнорируем разовые ошибки сети
+                } finally {
+                    setTimeout(poll, 3000);
+                }
+            }
+
+            // Инициализируем lastId по последнему сообщению в DOM
+            const existingMsgs = chatBox.querySelectorAll('.msg[data-id]');
+            if (existingMsgs.length) {
+                const last = existingMsgs[existingMsgs.length - 1];
+                lastId = parseInt(last.dataset.id, 10) || null;
+            }
+
+            poll();
+        })();
+    </script>
+    
+    <!-- Индикатор загрузки -->
+    <div class="loading-overlay show" id="loading-overlay">
+        <div style="text-align: center;">
+            <div class="loading-spinner"></div>
+            <div class="loading-text">Загрузка...</div>
+        </div>
+    </div>
+    
+    <script>
+        // Универсальный скрипт для управления оверлеем загрузки
+        (function() {
+            const loadingOverlay = document.getElementById('loading-overlay');
+            
+            function hideOverlay() {
+                if (loadingOverlay) {
+                    loadingOverlay.classList.remove('show');
+                    document.body.classList.remove('loading');
+                }
+            }
+            
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', hideOverlay);
+            } else {
+                hideOverlay();
+            }
+            
+            window.addEventListener('load', hideOverlay);
+            
+            // Обрабатываем навигацию назад/вперед (когда страница загружается из кэша)
+            window.addEventListener('pageshow', function(event) {
+                if (event.persisted) {
+                    hideOverlay();
+                }
+            });
+            
+            document.addEventListener('DOMContentLoaded', function() {
+                const links = document.querySelectorAll('a[href^="/admin/web"]');
+                
+                links.forEach(link => {
+                    link.addEventListener('click', function(e) {
+                        if (this.hasAttribute('download') || this.target === '_blank' || this.href.includes('/download')) {
+                            if (loadingOverlay) {
+                                loadingOverlay.classList.remove('show');
+                                document.body.classList.remove('loading');
+                            }
+                            return;
+                        }
+                        if (loadingOverlay) {
+                            loadingOverlay.classList.add('show');
+                            document.body.classList.add('loading');
+                        }
+                    });
+                });
+                
+                document.addEventListener('click', function(e) {
+                    const target = e.target.closest('a[href*="/download"]');
+                    if (target && loadingOverlay) {
+                        loadingOverlay.classList.remove('show');
+                        document.body.classList.remove('loading');
+                    }
+                });
+                
+                const forms = document.querySelectorAll('form');
+                forms.forEach(form => {
+                    form.addEventListener('submit', function() {
+                        if (loadingOverlay) {
+                            loadingOverlay.classList.add('show');
+                            document.body.classList.add('loading');
+                        }
+                    });
+                });
+            });
+        })();
+    </script>
+</body>
+</html>
+

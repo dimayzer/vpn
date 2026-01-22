@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Тикеты</title>
+    <link rel="stylesheet" href="/static/loading.css">
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            margin: 0;
+            padding: 20px;
+        }
+        tbody tr:hover {
+            background: #f8f9fa;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            overflow: hidden;
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+        .header h1 {
+            font-size: 2em;
+            margin: 0;
+        }
+        .header-actions {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        .topbar {
+            padding: 16px 28px;
+            border-bottom: 1px solid #eef1f5;
+            background: #f8f9fa;
+        }
+        .tabs {
+            display: flex;
+            gap: 10px;
+        }
+        .tabs a {
+            margin-right: 10px;
+            text-decoration: none;
+            padding: 8px 12px;
+            border-radius: 8px;
+            color: #333;
+            border: 1px solid #e1e5ea;
+        }
+        .tabs a.active {
+            background: #667eea;
+            color: white;
+            border-color: #667eea;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background: white;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+        tr.row-link { cursor: pointer; }
+        th, td {
+            padding: 12px 14px;
+            border-bottom: 1px solid #eef1f5;
+            text-align: left;
+            font-size: 0.95em;
+        }
+        th { background: #f8f9fb; color: #666; }
+        .badge {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 0.85em;
+            font-weight: 700;
+        }
+        .badge-open { background: #d1ecf1; color: #0c5460; }
+        .badge-closed { background: #e9ecef; color: #495057; }
+        .actions {
+            display: flex;
+            gap: 8px;
+        }
+        .btn {
+            border: none;
+            padding: 6px 10px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 0.9em;
+            text-decoration: none;
+        }
+        .btn-primary { background: #667eea; color: white; }
+        .btn-muted { background: #e9ecef; color: #333; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h2 style="margin:0;">🧾 Тикеты</h2>
+            <div class="tabs">
+                <a href="/admin/web/tickets?status=all" class="{% if status == 'all' %}active{% endif %}">Все</a>
+                <a href="/admin/web/tickets?status=open" class="{% if status == 'open' %}active{% endif %}">Активные</a>
+                <a href="/admin/web/tickets?status=closed" class="{% if status == 'closed' %}active{% endif %}">Архив</a>
+                <a href="/admin/web/dashboard" style="color:white; text-decoration:none; margin-left:10px;">← К дашборду</a>
+                <a href="/admin/web/export/tickets.csv" style="color:white; text-decoration:none; margin-left:10px; background:rgba(255,255,255,0.2); padding:6px 12px; border-radius:6px;">📥 CSV</a>
+                <a href="/admin/web/export/tickets.xlsx" style="color:white; text-decoration:none; margin-left:5px; background:rgba(255,255,255,0.2); padding:6px 12px; border-radius:6px;">📊 Excel</a>
+            </div>
+        </div>
+
+        <div style="padding: 20px 24px;">
+        <table>
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Пользователь</th>
+                    <th>Тема</th>
+                    <th>Статус</th>
+                    <th>Обновлён</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for t in tickets %}
+                <tr class="row-link" data-href="/admin/web/tickets/{{ t.id }}">
+                    <td>{{ t.id }}</td>
+                    <td><a href="/admin/web/users/{{ t.user_tg_id }}" style="color:#667eea; text-decoration:none;">{{ t.user_tg_id }}</a></td>
+                    <td>{{ t.topic }}</td>
+                    <td>
+                        <span class="badge 
+                            {% if t.status in ['new','in_progress','open'] %}badge-open{% else %}badge-closed{% endif %}">
+                            {% if t.status == 'new' or t.status == 'open' %}Создан{% elif t.status == 'in_progress' %}В работе{% else %}Закрыт{% endif %}
+                        </span>
+                    </td>
+                    <td>{{ t.updated_at }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+
+        <div style="margin-top:12px; display:flex; gap:8px; padding: 0 24px 20px;">
+            {% if has_prev %}
+            <a class="btn btn-muted" href="/admin/web/tickets?status={{ status }}&page={{ page-1 }}">← Предыдущая</a>
+            {% endif %}
+            {% if has_next %}
+            <a class="btn btn-muted" href="/admin/web/tickets?status={{ status }}&page={{ page+1 }}">Следующая →</a>
+            {% endif %}
+        </div>
+        </div>
+    </div>
+
+    <script>
+        // кликабельные строки
+        function bindRowClicks() {
+            document.querySelectorAll('tr.row-link').forEach((row) => {
+                const href = row.getAttribute('data-href');
+                row.onclick = () => { if (href) window.location = href; };
+            });
+        }
+        bindRowClicks();
+
+        // автообновление списка тикетов
+        (function () {
+            const tbody = document.querySelector('table tbody');
+            if (!tbody) return;
+            const params = new URLSearchParams(window.location.search);
+            const status = params.get('status') || '{{ status }}';
+            let page = {{ page }};
+
+            function renderTickets(data) {
+                tbody.innerHTML = '';
+                (data.tickets || []).forEach((t) => {
+                    const tr = document.createElement('tr');
+                    tr.className = 'row-link';
+                    tr.setAttribute('data-href', '/admin/web/tickets/' + t.id);
+                    const statusKey = (t.status || '').toLowerCase();
+                    let badgeClass = 'badge-closed';
+                    let label = 'Закрыт';
+                    if (['new', 'open', 'in_progress'].includes(statusKey)) {
+                        badgeClass = 'badge-open';
+                        if (statusKey === 'in_progress') label = 'В работе';
+                        else label = 'Создан';
+                    }
+                    tr.innerHTML = `
+                        <td>${t.id}</td>
+                        <td><a href="/admin/web/users/${t.user_tg_id}" style="color:#667eea; text-decoration:none;">${t.user_tg_id}</a></td>
+                        <td>${t.topic}</td>
+                        <td><span class="badge ${badgeClass}">${label}</span></td>
+                        <td>${t.updated_at || ''}</td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+                bindRowClicks();
+            }
+
+            async function poll() {
+                try {
+                    const qs = new URLSearchParams({ status: status, page: String(page) }).toString();
+                    const res = await fetch('/admin/web/api/tickets?' + qs);
+                    if (!res.ok) return;
+                    const data = await res.json();
+                    renderTickets(data);
+                } catch (e) {
+                    // игнорируем разовые ошибки сети
+                } finally {
+                    setTimeout(poll, 5000);
+                }
+            }
+
+            poll();
+        })();
+    </script>
+    
+    <!-- Индикатор загрузки -->
+    <div class="loading-overlay show" id="loading-overlay">
+        <div style="text-align: center;">
+            <div class="loading-spinner"></div>
+            <div class="loading-text">Загрузка...</div>
+        </div>
+    </div>
+    
+    <script>
+        // Универсальный скрипт для управления оверлеем загрузки
+        (function() {
+            const loadingOverlay = document.getElementById('loading-overlay');
+            
+            function hideOverlay() {
+                if (loadingOverlay) {
+                    loadingOverlay.classList.remove('show');
+                    document.body.classList.remove('loading');
+                }
+            }
+            
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', hideOverlay);
+            } else {
+                hideOverlay();
+            }
+            
+            window.addEventListener('load', hideOverlay);
+            
+            // Обрабатываем навигацию назад/вперед (когда страница загружается из кэша)
+            window.addEventListener('pageshow', function(event) {
+                if (event.persisted) {
+                    hideOverlay();
+                }
+            });
+            
+            document.addEventListener('DOMContentLoaded', function() {
+                const links = document.querySelectorAll('a[href^="/admin/web"]');
+                
+                links.forEach(link => {
+                    link.addEventListener('click', function(e) {
+                        if (this.hasAttribute('download') || this.target === '_blank' || this.href.includes('/download')) {
+                            if (loadingOverlay) {
+                                loadingOverlay.classList.remove('show');
+                                document.body.classList.remove('loading');
+                            }
+                            return;
+                        }
+                        if (loadingOverlay) {
+                            loadingOverlay.classList.add('show');
+                            document.body.classList.add('loading');
+                        }
+                    });
+                });
+                
+                document.addEventListener('click', function(e) {
+                    const target = e.target.closest('a[href*="/download"]');
+                    if (target && loadingOverlay) {
+                        loadingOverlay.classList.remove('show');
+                        document.body.classList.remove('loading');
+                    }
+                });
+                
+                const forms = document.querySelectorAll('form');
+                forms.forEach(form => {
+                    form.addEventListener('submit', function() {
+                        if (loadingOverlay) {
+                            loadingOverlay.classList.add('show');
+                            document.body.classList.add('loading');
+                        }
+                    });
+                });
+            });
+        })();
+    </script>
+</body>
+</html>
+

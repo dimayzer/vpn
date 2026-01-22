@@ -1,0 +1,1129 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Профиль пользователя</title>
+    <link rel="stylesheet" href="/static/loading.css">
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1100px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.15);
+            overflow: hidden;
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 24px 28px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        .header a {
+            color: white;
+            text-decoration: none;
+            padding: 8px 14px;
+            background: rgba(255,255,255,0.2);
+            border-radius: 8px;
+        }
+        .section {
+            padding: 24px 28px;
+            border-bottom: 1px solid #f1f3f5;
+        }
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+            gap: 16px;
+        }
+        .card {
+            background: #f8f9fb;
+            border-radius: 10px;
+            padding: 14px 16px;
+            border: 1px solid #eef1f5;
+        }
+        .label {
+            color: #888;
+            font-size: 0.85em;
+            margin-bottom: 4px;
+        }
+        .value {
+            font-weight: 600;
+            color: #333;
+        }
+        .value-inline {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+        .actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            align-items: center;
+        }
+        .btn {
+            border: none;
+            padding: 8px 12px;
+            border-radius: 10px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 0.9em;
+        }
+        .btn-danger { background: #dc3545; color: white; }
+        .btn-success { background: #28a745; color: white; }
+        .btn-primary { background: #667eea; color: white; }
+        .btn-muted { background: #e9ecef; color: #333; text-decoration:none; display:inline-block; }
+        .input {
+            padding: 8px 10px;
+            border: 1px solid #e1e5ea;
+            border-radius: 8px;
+            font-size: 0.9em;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        th, td {
+            padding: 10px;
+            border-bottom: 1px solid #f1f3f5;
+            text-align: left;
+            font-size: 0.9em;
+        }
+        th { color: #666; }
+        .badge {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 0.8em;
+            font-weight: 700;
+        }
+        .badge-active { background: #d4edda; color: #155724; }
+        .badge-inactive { background: #f8d7da; color: #721c24; }
+        .badge-admin { background: #fff3cd; color: #856404; }
+        .badge-user { background: #d1ecf1; color: #0c5460; }
+        .badge-payment-success { background: #d4edda; color: #155724; }
+        .badge-payment-pending { background: #fff3cd; color: #856404; }
+        .badge-payment-failed { background: #f8d7da; color: #721c24; }
+        .row-payment-success { background: #f0f9f4; border-left: 3px solid #28a745; }
+        .row-payment-pending { background: #fffbf0; border-left: 3px solid #ffc107; }
+        .row-payment-failed { background: #fff5f5; border-left: 3px solid #dc3545; }
+        .muted { color: #777; font-size: 0.9em; }
+        .notice {
+            padding: 10px 12px;
+            background: #fff3cd;
+            color: #856404;
+            border-radius: 10px;
+            border: 1px solid #ffeeba;
+            margin-bottom: 14px;
+        }
+        /* Modal */
+        .overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.35);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 2000;
+        }
+        .overlay.show { display: flex; }
+        .modal {
+            background: white;
+            border-radius: 12px;
+            padding: 22px;
+            width: min(440px, 92vw);
+            box-shadow: 0 10px 40px rgba(0,0,0,0.25);
+        }
+        .modal h3 {
+            margin: 0 0 12px;
+        }
+        .modal .actions {
+            justify-content: flex-end;
+        }
+        body.backdrop-blur .container {
+            filter: blur(4px);
+        }
+        .clickable {
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div>
+                <div style="font-size:1.4em; font-weight:700;">👤 Профиль пользователя</div>
+                <div style="opacity:0.9;">tg_id: {{ user.tg_id }}</div>
+            </div>
+            <div class="actions">
+                <a class="btn-muted" href="/admin/web/users">← К списку</a>
+                <a class="btn-muted" href="/admin/logout">🚪 Выйти</a>
+            </div>
+        </div>
+
+        <div class="section">
+            {% if request.query_params.get('error') %}
+            <div class="notice">
+                {% set err = request.query_params.get('error') %}
+                {% if err == 'bad_amount' %}Неверная сумма. Вводи просто число, например: <code>10</code> или <code>10.5</code>.
+                {% elif err == 'forbidden_rank' %}Недостаточно прав: нельзя делать действие над пользователем с равной/более высокой ролью.
+                {% elif err == 'forbidden_self' %}Нельзя менять самому себе роль или бан.
+                {% elif err == 'reason_required' %}Нужно указать причину.
+                {% else %}Ошибка: {{ err }}{% endif %}
+            </div>
+            {% endif %}
+            <div class="grid">
+                <div class="card">
+                    <div class="label">Аватар</div>
+                    {% if avatar_url %}
+                    <div class="value"><img src="{{ avatar_url }}" alt="avatar" style="width:96px; height:96px; border-radius:12px; object-fit:cover; border:1px solid #eef1f5;"></div>
+                    {% else %}
+                    <div class="value muted">Нет данных</div>
+                    {% endif %}
+                </div>
+                <div class="card">
+                    <div class="label">Имя</div>
+                    <div class="value">{{ user.first_name }} {{ user.last_name }}</div>
+                </div>
+                <div class="card">
+                    <div class="label">Тег</div>
+                    <div class="value">
+                        {% if user.username %}
+                        <a href="https://t.me/{{ user.username }}" target="_blank" style="color:#667eea; text-decoration:none;">@{{ user.username }}</a>
+                        {% else %}
+                        —
+                        {% endif %}
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="label">Роль</div>
+                    <div class="value-inline clickable" data-modal-target="modal-role">
+                        <span class="badge {% if user.role == 'Главный админ' %}badge-admin{% elif user.role == 'Админ' %}badge-admin{% elif user.role == 'Модератор' %}badge-user{% else %}badge-user{% endif %}">{{ user.role }}</span>
+                        <div class="muted" style="margin-top:4px;">Нажми, чтобы изменить</div>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="label">Баланс</div>
+                    <div class="value-inline clickable" data-modal-target="modal-balance">
+                        <span>{{ "%.2f"|format(user.balance) }} RUB</span>
+                        <div class="muted" style="margin-top:4px;">Нажми, чтобы изменить</div>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="label">Статус</div>
+                    <div class="value-inline clickable" data-modal-target="modal-status">
+                        <span class="badge {% if user.is_active %}badge-active{% else %}badge-inactive{% endif %}">
+                            {% if user.is_active %}✅ Активен{% else %}❌ Заблокирован{% endif %}
+                        </span>
+                        <div class="muted" style="margin-top:4px;">Нажми, чтобы изменить</div>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="label">Активная подписка</div>
+                    <div class="value-inline clickable" data-modal-target="modal-subscription">
+                        <span class="badge {% if user.has_active_subscription %}badge-active{% else %}badge-inactive{% endif %}">
+                            {% if user.has_active_subscription %}✅ Есть{% else %}❌ Нет{% endif %}
+                        </span>
+                        <div class="muted" style="margin-top:4px;">Нажми, чтобы изменить</div>
+                    </div>
+                </div>
+                {% if user.has_active_subscription and user.subscription_ends_at %}
+                <div class="card">
+                    <div class="label">Подписка действует до</div>
+                    <div class="value">{{ user.subscription_ends_at }} МСК</div>
+                </div>
+                {% endif %}
+                <div class="card">
+                    <div class="label">Регистрация</div>
+                    <div class="value">{{ user.created_at }} МСК</div>
+                </div>
+                <div class="card">
+                    <div class="label">Реферальный код</div>
+                    <div class="value"><code>{{ user.referral_code }}</code></div>
+                </div>
+                <div class="card">
+                    <div class="label">Пригласил</div>
+                    <div class="value">
+                        {% if user.referred_by_tg_id %}
+                        <a href="/admin/web/users/{{ user.referred_by_tg_id }}" style="color:#667eea; text-decoration:none;">{{ user.referred_by_tg_id }}</a>
+                        {% else %}—{% endif %}
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="label">Пригласил сам (рефералы)</div>
+                    <div class="value">{{ referrals_count }}</div>
+                </div>
+                <div class="card">
+                    <div class="label">Тикеты</div>
+                    <div class="value-inline clickable" data-modal-target="modal-tickets">
+                        <span>{{ tickets|length if tickets else 0 }}</span>
+                        <div class="muted" style="margin-top:4px;">Нажми, чтобы открыть</div>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="label">Платежи</div>
+                    <div class="value-inline clickable" data-modal-target="modal-payments">
+                        <span id="payments-count">—</span>
+                        <div class="muted" style="margin-top:4px;">Нажми, чтобы открыть</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="section" id="logs-section">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; flex-wrap:wrap; gap:10px;">
+                <h3 style="margin:0;">Журнал действий</h3>
+                <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                    <select id="logs-filter-action" onchange="applyLogsFilter()" style="padding:6px 10px; border:1px solid #ddd; border-radius:6px; font-size:0.9em;">
+                        <option value="all">Все действия</option>
+                        <option value="user_blocked">Блокировки</option>
+                        <option value="user_unblocked">Разблокировки</option>
+                        <option value="balance_credited">Изменения баланса</option>
+                        <option value="role_changed">Изменения роли</option>
+                        <option value="ticket_created">Создание тикетов</option>
+                        <option value="admin_action">Админ действия</option>
+                    </select>
+                    <button class="btn btn-muted" onclick="exportUserLogs()" style="padding:6px 12px; font-size:0.9em;">📥 Экспорт CSV</button>
+                </div>
+            </div>
+            <div id="logs-container">
+                {% if logs %}
+                <table id="logs-table">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Действие</th>
+                            <th>Админ</th>
+                            <th>Детали</th>
+                            <th>Время (МСК)</th>
+                        </tr>
+                    </thead>
+                    <tbody id="logs-tbody">
+                        {% for log in logs %}
+                        {% set is_critical = log.action in ['user_blocked', 'user_unblocked', 'balance_credited', 'role_changed'] %}
+                        {% set is_warning = log.action in ['ticket_created', 'subscription_created'] %}
+                        <tr class="{% if is_critical %}log-row-critical{% elif is_warning %}log-row-warning{% endif %}">
+                            <td>{{ log.id }}</td>
+                            <td>
+                                <span class="badge {% if is_critical %}badge-critical{% elif is_warning %}badge-warning{% else %}badge-info{% endif %}">
+                                    {{ log.action }}
+                                </span>
+                            </td>
+                            <td>{{ log.admin_tg_id or '—' }}</td>
+                            <td>{{ log.details or '—' }}</td>
+                            <td>{{ log.created_at }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                <div id="logs-pagination" style="margin-top:12px; display:flex; gap:8px;">
+                    {% if logs_has_prev %}
+                    <button class="btn btn-muted" onclick="loadLogsPage({{ logs_page - 1 }})">← Предыдущая</button>
+                    {% endif %}
+                    {% if logs_has_next %}
+                    <button class="btn btn-muted" onclick="loadLogsPage({{ logs_page + 1 }})">Следующая →</button>
+                    {% endif %}
+                </div>
+                {% else %}
+                <div class="muted" id="logs-empty">Пока нет записей</div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Overlay Modals -->
+    <div class="overlay" id="modal-role">
+        <div class="modal">
+            <h3>Изменить роль</h3>
+            {% if is_protected_admin %}
+                <p class="muted">Главный админ из ADMIN_IDS — роль не меняется.</p>
+                <div class="actions" style="margin-top:12px;">
+                    <button class="btn btn-muted" type="button" onclick="closeModal('modal-role')">Закрыть</button>
+                </div>
+            {% else %}
+            <form method="post" action="/admin/web/users/role" class="modal-form">
+                <input type="hidden" name="tg_id" value="{{ user.tg_id }}">
+                <label class="label" style="display:block; margin-bottom:6px;">Роль</label>
+                <select class="input" name="role" style="width:100%; margin-bottom:10px;">
+                    {% for r in role_options %}
+                    <option value="{{ r }}" {% if role_value == r %}selected{% endif %}>{{ 'Админ' if r=='admin' else ('Модератор' if r=='moderator' else 'Пользователь') }}</option>
+                    {% endfor %}
+                </select>
+                <label class="label" style="display:block; margin-bottom:6px;">Причина</label>
+                <input class="input" type="text" name="reason" placeholder="Причина (обяз.)" style="width:100%; margin-bottom:14px;">
+                <div class="actions">
+                    <button class="btn btn-muted" type="button" onclick="closeModal('modal-role')">Отмена</button>
+                    <button class="btn btn-primary" type="submit">Сохранить</button>
+                </div>
+            </form>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="overlay" id="modal-balance">
+        <div class="modal">
+            <h3>Изменить баланс</h3>
+            <form method="post" action="/admin/web/users/credit" class="modal-form">
+                <input type="hidden" name="tg_id" value="{{ user.tg_id }}">
+                <label class="label" style="display:block; margin-bottom:6px;">Сумма (RUB)</label>
+                <input class="input" type="text" name="amount" placeholder="+/- RUB" style="width:100%; margin-bottom:10px;">
+                <label class="label" style="display:block; margin-bottom:6px;">Причина</label>
+                <input class="input" type="text" name="reason" placeholder="Причина (обяз.)" style="width:100%; margin-bottom:14px;">
+                <div class="actions">
+                    <button class="btn btn-muted" type="button" onclick="closeModal('modal-balance')">Отмена</button>
+                    <button class="btn btn-primary" type="submit">Сохранить</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="overlay" id="modal-status">
+        <div class="modal">
+            <h3>Изменить статус</h3>
+            {% if user.is_active %}
+            <form method="post" action="/admin/web/users/block" class="modal-form">
+                <input type="hidden" name="tg_id" value="{{ user.tg_id }}">
+                <label class="label" style="display:block; margin-bottom:6px;">Причина блокировки</label>
+                <input class="input" type="text" name="reason" placeholder="Причина (обяз.)" style="width:100%; margin-bottom:14px;">
+                <div class="actions">
+                    <button class="btn btn-muted" type="button" onclick="closeModal('modal-status')">Отмена</button>
+                    <button class="btn btn-danger" type="submit">Заблокировать</button>
+                </div>
+            </form>
+            {% else %}
+            <form method="post" action="/admin/web/users/unblock" class="modal-form">
+                <input type="hidden" name="tg_id" value="{{ user.tg_id }}">
+                <label class="label" style="display:block; margin-bottom:6px;">Причина разблокировки</label>
+                <input class="input" type="text" name="reason" placeholder="Причина (обяз.)" style="width:100%; margin-bottom:14px;">
+                <div class="actions">
+                    <button class="btn btn-muted" type="button" onclick="closeModal('modal-status')">Отмена</button>
+                    <button class="btn btn-success" type="submit">Разблокировать</button>
+                </div>
+            </form>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="overlay" id="modal-tickets">
+        <div class="modal" style="width: min(800px, 95vw); max-height: 90vh; overflow-y: auto;">
+            <h3>Тикеты пользователя</h3>
+            {% if tickets %}
+            <table style="margin-top: 12px;">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Тема</th>
+                        <th>Статус</th>
+                        <th>Создан</th>
+                        <th>Обновлён</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for t in tickets %}
+                    <tr class="clickable" style="cursor:pointer;" onclick="window.location.href='/admin/web/tickets/{{ t.id }}'">
+                        <td>{{ t.id }}</td>
+                        <td>{{ t.topic }}</td>
+                        <td>
+                            <span class="badge {% if t.status == 'new' %}badge-active{% elif t.status == 'in_progress' %}badge-admin{% else %}badge-inactive{% endif %}">
+                                {% if t.status == 'new' %}Создан{% elif t.status == 'in_progress' %}В работе{% else %}Закрыт{% endif %}
+                            </span>
+                        </td>
+                        <td>{{ t.created_at }}</td>
+                        <td>{{ t.updated_at }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <div class="muted" style="margin-top: 12px;">У пользователя пока нет тикетов</div>
+            {% endif %}
+            <div class="actions" style="margin-top: 16px; justify-content: flex-end;">
+                <button class="btn btn-muted" type="button" onclick="closeModal('modal-tickets')">Закрыть</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="overlay" id="modal-payments">
+        <div class="modal" style="width: min(900px, 95vw); max-height: 90vh; overflow-y: auto;">
+            <h3>Платежи пользователя</h3>
+            <div id="payments-container" style="margin-top: 12px;">
+                <div class="muted" style="text-align: center; padding: 20px;">Загрузка...</div>
+            </div>
+            <div class="actions" style="margin-top: 16px; justify-content: flex-end;">
+                <button class="btn btn-muted" type="button" onclick="closeModal('modal-payments')">Закрыть</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="overlay" id="modal-payment-detail">
+        <div class="modal" style="width: min(600px, 95vw); max-height: 90vh; overflow-y: auto;">
+            <h3>Детали платежа</h3>
+            <div id="payment-detail-content" style="margin-top: 12px;">
+                <!-- Содержимое будет загружено динамически -->
+            </div>
+            <div class="actions" style="margin-top: 16px; justify-content: flex-end;">
+                <button class="btn btn-muted" type="button" onclick="closeModal('modal-payment-detail')">Закрыть</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="overlay" id="modal-subscription">
+        <div class="modal">
+            <h3>Управление подпиской</h3>
+            <form id="subscription-form" class="modal-form">
+                <input type="hidden" name="tg_id" value="{{ user.tg_id }}">
+                <label class="label" style="display:block; margin-bottom:6px;">Действие</label>
+                <select class="input" name="action" id="subscription-action" style="width:100%; margin-bottom:14px;" onchange="updateSubscriptionForm()" required>
+                    <option value="add">Выдать подписку</option>
+                    <option value="extend">Продлить подписку</option>
+                    <option value="remove">Отменить подписку</option>
+                </select>
+                <div id="subscription-duration-group" style="margin-bottom:14px;">
+                    <label class="label" style="display:block; margin-bottom:6px;">Срок подписки (дней)</label>
+                    <input class="input" type="number" name="days" id="subscription-days" min="1" max="9999" value="30" placeholder="30" style="width:100%;" required>
+                    <small style="color:#666; font-size:0.9em;">Введите количество дней (от 1 до 9999 дней)</small>
+                </div>
+                <div id="subscription-reason-group" style="margin-bottom:14px;">
+                    <label class="label" style="display:block; margin-bottom:6px;">Причина</label>
+                    <input class="input" type="text" name="reason" placeholder="Причина выдачи/продления подписки" style="width:100%;" required>
+                </div>
+                <div class="actions">
+                    <button class="btn btn-muted" type="button" onclick="closeModal('modal-subscription')">Отмена</button>
+                    <button class="btn btn-primary" type="submit" id="subscription-submit-btn">Применить</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        // CSRF для всех POST форм на странице
+        const csrfToken = "{{ csrf_token }}";
+        document.querySelectorAll('form[method="post"]').forEach((form) => {
+            form.addEventListener('submit', (e) => {
+                e.preventDefault();
+                const fd = new FormData(form);
+                fetch(form.action, {
+                    method: 'POST',
+                    body: fd,
+                    headers: { 'X-CSRF-Token': csrfToken }
+                }).then(() => window.location.reload());
+            });
+        });
+
+        // Модалки
+        function openModal(id) {
+            document.body.classList.add('backdrop-blur');
+            const ov = document.getElementById(id);
+            if (ov) ov.classList.add('show');
+        }
+        function closeModal(id) {
+            document.body.classList.remove('backdrop-blur');
+            const ov = document.getElementById(id);
+            if (ov) ov.classList.remove('show');
+        }
+        document.querySelectorAll('[data-modal-target]').forEach(el => {
+            el.addEventListener('click', () => {
+                const id = el.getAttribute('data-modal-target');
+                if (id) openModal(id);
+            });
+        });
+        document.querySelectorAll('.overlay').forEach(ov => {
+            ov.addEventListener('click', (e) => {
+                if (e.target === ov) {
+                    ov.classList.remove('show');
+                    document.body.classList.remove('backdrop-blur');
+                }
+            });
+        });
+        // Обновление формы подписки в зависимости от выбранного действия
+        function updateSubscriptionForm() {
+            const action = document.getElementById('subscription-action').value;
+            const durationGroup = document.getElementById('subscription-duration-group');
+            const reasonGroup = document.getElementById('subscription-reason-group');
+            const submitBtn = document.getElementById('subscription-submit-btn');
+            
+            if (action === 'remove') {
+                durationGroup.style.display = 'none';
+                reasonGroup.querySelector('input').required = true;
+                submitBtn.textContent = 'Отменить подписку';
+                submitBtn.className = 'btn btn-danger';
+            } else {
+                durationGroup.style.display = 'block';
+                reasonGroup.querySelector('input').required = true;
+                if (action === 'add') {
+                    submitBtn.textContent = 'Выдать подписку';
+                } else {
+                    submitBtn.textContent = 'Продлить подписку';
+                }
+                submitBtn.className = 'btn btn-primary';
+            }
+        }
+        
+        // Обработка формы подписки
+        const subscriptionForm = document.getElementById('subscription-form');
+        if (subscriptionForm) {
+            subscriptionForm.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const form = e.target;
+                const formData = new FormData(form);
+                const data = {
+                    tg_id: parseInt(formData.get('tg_id')),
+                    action: formData.get('action'),
+                    days: formData.get('action') !== 'remove' ? parseInt(formData.get('days')) : null,
+                    reason: formData.get('reason')
+                };
+                
+                try {
+                    const response = await fetch('/admin/web/users/subscription', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-Token': csrfToken
+                        },
+                        body: JSON.stringify(data)
+                    });
+                    
+                    const result = await response.json();
+                    if (result.success) {
+                        closeModal('modal-subscription');
+                        window.location.reload();
+                    } else {
+                        alert('Ошибка: ' + (result.error || 'Неизвестная ошибка'));
+                    }
+                } catch (error) {
+                    console.error('Ошибка:', error);
+                    alert('Ошибка при выполнении операции');
+                }
+            });
+        }
+        
+        document.querySelectorAll('.modal-form').forEach(f => {
+            // Пропускаем форму подписки, у неё свой обработчик
+            if (f.id === 'subscription-form') return;
+            
+            f.addEventListener('submit', (e) => {
+                const reasonInput = f.querySelector('input[name="reason"]');
+                // Для форм без поля reason ничего не требуем (например, отправка сообщения)
+                if (reasonInput && !reasonInput.value.trim()) {
+                    e.preventDefault();
+                    alert('Нужно указать причину.');
+                    return;
+                }
+            });
+        });
+
+        // AJAX загрузка логов
+        const userId = {{ user.tg_id }};
+        let currentLogsPage = {{ logs_page or 1 }};
+        
+        function loadLogsPage(page) {
+            if (page < 1) return;
+            currentLogsPage = page;
+            const container = document.getElementById('logs-container');
+            const tbody = document.getElementById('logs-tbody');
+            const pagination = document.getElementById('logs-pagination');
+            const empty = document.getElementById('logs-empty');
+            
+            // Показываем индикатор загрузки
+            if (tbody) tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:20px;">Загрузка...</td></tr>';
+            if (pagination) pagination.style.opacity = '0.5';
+            
+            const actionFilter = document.getElementById('logs-filter-action')?.value || 'all';
+            fetch(`/admin/web/api/users/${userId}/logs?page=${page}&action=${actionFilter}`)
+                .then(res => res.json())
+                .then(data => {
+                    // Обновляем таблицу
+                    if (data.logs && data.logs.length > 0) {
+                        if (empty) empty.style.display = 'none';
+                        if (!tbody) {
+                            // Создаем таблицу, если её нет
+                            const table = document.createElement('table');
+                            table.id = 'logs-table';
+                            table.innerHTML = `
+                                <thead>
+                                    <tr>
+                                        <th>ID</th>
+                                        <th>Действие</th>
+                                        <th>Админ</th>
+                                        <th>Детали</th>
+                                        <th>Время (МСК)</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="logs-tbody"></tbody>
+                            `;
+                            container.insertBefore(table, pagination || empty);
+                        }
+                        const newTbody = document.getElementById('logs-tbody');
+                        const criticalActions = ['user_blocked', 'user_unblocked', 'balance_credited', 'role_changed'];
+                        const warningActions = ['ticket_created', 'subscription_created'];
+                        newTbody.innerHTML = data.logs.map(log => {
+                            const isCritical = criticalActions.includes(log.action);
+                            const isWarning = warningActions.includes(log.action);
+                            const rowClass = isCritical ? 'log-row-critical' : (isWarning ? 'log-row-warning' : '');
+                            const badgeClass = isCritical ? 'badge-critical' : (isWarning ? 'badge-warning' : 'badge-info');
+                            return `
+                                <tr class="${rowClass}">
+                                    <td>${log.id}</td>
+                                    <td><span class="badge ${badgeClass}">${log.action}</span></td>
+                                    <td>${log.admin_tg_id || '—'}</td>
+                                    <td>${log.details || '—'}</td>
+                                    <td>${log.created_at}</td>
+                                </tr>
+                            `;
+                        }).join('');
+                    } else {
+                        if (tbody) tbody.innerHTML = '';
+                        if (empty) {
+                            empty.style.display = 'block';
+                            empty.textContent = 'Пока нет записей';
+                        } else {
+                            const emptyDiv = document.createElement('div');
+                            emptyDiv.className = 'muted';
+                            emptyDiv.id = 'logs-empty';
+                            emptyDiv.textContent = 'Пока нет записей';
+                            container.appendChild(emptyDiv);
+                        }
+                    }
+                    
+                    // Обновляем пагинацию
+                    if (pagination) {
+                        pagination.innerHTML = '';
+                        if (data.has_prev) {
+                            const prevBtn = document.createElement('button');
+                            prevBtn.className = 'btn btn-muted';
+                            prevBtn.textContent = '← Предыдущая';
+                            prevBtn.onclick = () => loadLogsPage(page - 1);
+                            pagination.appendChild(prevBtn);
+                        }
+                        if (data.has_next) {
+                            const nextBtn = document.createElement('button');
+                            nextBtn.className = 'btn btn-muted';
+                            nextBtn.textContent = 'Следующая →';
+                            nextBtn.onclick = () => loadLogsPage(page + 1);
+                            pagination.appendChild(nextBtn);
+                        }
+                        pagination.style.opacity = '1';
+                    } else if (data.has_prev || data.has_next) {
+                        // Создаем пагинацию, если её нет
+                        const newPagination = document.createElement('div');
+                        newPagination.id = 'logs-pagination';
+                        newPagination.style.marginTop = '12px';
+                        newPagination.style.display = 'flex';
+                        newPagination.style.gap = '8px';
+                        if (data.has_prev) {
+                            const prevBtn = document.createElement('button');
+                            prevBtn.className = 'btn btn-muted';
+                            prevBtn.textContent = '← Предыдущая';
+                            prevBtn.onclick = () => loadLogsPage(page - 1);
+                            newPagination.appendChild(prevBtn);
+                        }
+                        if (data.has_next) {
+                            const nextBtn = document.createElement('button');
+                            nextBtn.className = 'btn btn-muted';
+                            nextBtn.textContent = 'Следующая →';
+                            nextBtn.onclick = () => loadLogsPage(page + 1);
+                            newPagination.appendChild(nextBtn);
+                        }
+                        container.appendChild(newPagination);
+                    }
+                    
+                    // Прокручиваем к началу секции логов
+                    document.getElementById('logs-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                })
+                .catch(err => {
+                    console.error('Ошибка загрузки логов:', err);
+                    if (tbody) tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:20px; color:#dc3545;">Ошибка загрузки</td></tr>';
+                    if (pagination) pagination.style.opacity = '1';
+                });
+        }
+
+        // Загрузка платежей с пагинацией
+        let currentPaymentsPage = 1;
+        const paymentsPerPage = 20;
+        
+        function loadPayments(page = 1) {
+            currentPaymentsPage = page;
+            const container = document.getElementById('payments-container');
+            if (container) {
+                container.innerHTML = '<div class="muted" style="text-align: center; padding: 20px;">Загрузка...</div>';
+            }
+            
+            fetch(`/users/${userId}/payments?limit=200`)
+                .then(res => res.json())
+                .then(allPayments => {
+                    const countEl = document.getElementById('payments-count');
+                    if (countEl) {
+                        countEl.textContent = allPayments.length || 0;
+                    }
+                    
+                    // Пагинация
+                    const totalPages = Math.ceil(allPayments.length / paymentsPerPage);
+                    const startIdx = (page - 1) * paymentsPerPage;
+                    const endIdx = startIdx + paymentsPerPage;
+                    const payments = allPayments.slice(startIdx, endIdx);
+                    
+                    if (payments && payments.length > 0) {
+                        const table = document.createElement('table');
+                        table.style.marginTop = '12px';
+                        table.innerHTML = `
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Провайдер</th>
+                                    <th>Сумма</th>
+                                    <th>Валюта</th>
+                                    <th>Статус</th>
+                                    <th>Создан</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${payments.map(payment => {
+                                    const statusBadge = payment.status === 'succeeded' ? 'badge-payment-success' : 
+                                                       payment.status === 'pending' ? 'badge-payment-pending' : 
+                                                       'badge-payment-failed';
+                                    const rowClass = payment.status === 'succeeded' ? 'row-payment-success' : 
+                                                   payment.status === 'pending' ? 'row-payment-pending' : 
+                                                   'row-payment-failed';
+                                    const statusText = payment.status === 'succeeded' ? 'Успешно' : 
+                                                      payment.status === 'pending' ? 'Ожидание' : 
+                                                      payment.status === 'failed' ? 'Ошибка' : payment.status;
+                                    const amountRub = (payment.amount_cents / 100).toFixed(2);
+                                    return `
+                                        <tr class="clickable ${rowClass}" style="cursor:pointer;" onclick="showPaymentDetail(${payment.id})">
+                                            <td>${payment.id}</td>
+                                            <td>${payment.provider || '—'}</td>
+                                            <td>${amountRub} RUB</td>
+                                            <td>${payment.currency || '—'}</td>
+                                            <td><span class="badge ${statusBadge}">${statusText}</span></td>
+                                            <td>${payment.created_at || '—'}</td>
+                                        </tr>
+                                    `;
+                                }).join('')}
+                            </tbody>
+                        `;
+                        
+                        container.innerHTML = '';
+                        container.appendChild(table);
+                        
+                        // Добавляем пагинацию
+                        if (totalPages > 1) {
+                            const pagination = document.createElement('div');
+                            pagination.style.marginTop = '12px';
+                            pagination.style.display = 'flex';
+                            pagination.style.gap = '8px';
+                            pagination.style.justifyContent = 'center';
+                            pagination.style.alignItems = 'center';
+                            
+                            if (page > 1) {
+                                const prevBtn = document.createElement('button');
+                                prevBtn.className = 'btn btn-muted';
+                                prevBtn.textContent = '← Предыдущая';
+                                prevBtn.onclick = () => loadPayments(page - 1);
+                                pagination.appendChild(prevBtn);
+                            }
+                            
+                            const pageInfo = document.createElement('span');
+                            pageInfo.className = 'muted';
+                            pageInfo.textContent = `Страница ${page} из ${totalPages}`;
+                            pagination.appendChild(pageInfo);
+                            
+                            if (page < totalPages) {
+                                const nextBtn = document.createElement('button');
+                                nextBtn.className = 'btn btn-muted';
+                                nextBtn.textContent = 'Следующая →';
+                                nextBtn.onclick = () => loadPayments(page + 1);
+                                pagination.appendChild(nextBtn);
+                            }
+                            
+                            container.appendChild(pagination);
+                        }
+                    } else {
+                        container.innerHTML = '<div class="muted" style="text-align: center; padding: 20px;">У пользователя пока нет платежей</div>';
+                    }
+                })
+                .catch(err => {
+                    console.error('Ошибка загрузки платежей:', err);
+                    const container = document.getElementById('payments-container');
+                    if (container) {
+                        container.innerHTML = '<div style="text-align: center; padding: 20px; color: #dc3545;">Ошибка загрузки</div>';
+                    }
+                });
+        }
+
+        // Показать детали платежа
+        function showPaymentDetail(paymentId) {
+            fetch(`/api/payments/${paymentId}`)
+                .then(res => res.json())
+                .then(payment => {
+                    const content = document.getElementById('payment-detail-content');
+                    const amountRub = (payment.amount_cents / 100).toFixed(2);
+                    const statusBadge = payment.status === 'succeeded' ? 'badge-success' : 
+                                       payment.status === 'pending' ? 'badge-payment-pending' : 
+                                       'badge-payment-failed';
+                    const statusText = payment.status === 'succeeded' ? 'Успешно' : 
+                                      payment.status === 'pending' ? 'Ожидание' : 
+                                      payment.status === 'failed' ? 'Ошибка' : payment.status;
+                    
+                    // Извлекаем полезные данные из raw_response
+                    let extraInfo = '';
+                    let rawResponseData = null;
+                    
+                    if (payment.raw_response) {
+                        try {
+                            rawResponseData = JSON.parse(payment.raw_response);
+                            
+                            // Для CryptoBot
+                            if (payment.provider === 'cryptobot' && rawResponseData) {
+                                const invoice = rawResponseData.invoice || rawResponseData.result || rawResponseData;
+                                if (invoice) {
+                                    extraInfo += `
+                                        <div class="card">
+                                            <div class="label">Invoice ID</div>
+                                            <div class="value">${invoice.invoice_id || invoice.id || '—'}</div>
+                                        </div>
+                                    `;
+                                    if (invoice.paid_at) {
+                                        extraInfo += `
+                                            <div class="card">
+                                                <div class="label">Дата оплаты</div>
+                                                <div class="value">${new Date(invoice.paid_at).toLocaleString('ru-RU')}</div>
+                                            </div>
+                                        `;
+                                    }
+                                    if (invoice.paid_amount) {
+                                        extraInfo += `
+                                            <div class="card">
+                                                <div class="label">Оплачено</div>
+                                                <div class="value">${invoice.paid_amount} ${invoice.paid_asset || invoice.asset || ''}</div>
+                                            </div>
+                                        `;
+                                    }
+                                    if (invoice.fee_amount) {
+                                        extraInfo += `
+                                            <div class="card">
+                                                <div class="label">Комиссия</div>
+                                                <div class="value">${invoice.fee_amount} ${invoice.fee_asset || ''}</div>
+                                            </div>
+                                        `;
+                                    }
+                                    if (invoice.bot_invoice_url || invoice.pay_url) {
+                                        const invoiceUrl = invoice.bot_invoice_url || invoice.pay_url;
+                                        extraInfo += `
+                                            <div class="card">
+                                                <div class="label">Ссылка на инвойс</div>
+                                                <div class="value"><a href="${invoiceUrl}" target="_blank" style="color: #667eea; text-decoration: none; word-break: break-all;">${invoiceUrl}</a></div>
+                                            </div>
+                                        `;
+                                    }
+                                }
+                            }
+                            
+                            // Для Telegram Stars
+                            if (payment.provider === 'telegram_stars' && rawResponseData) {
+                                if (rawResponseData.telegram_payment_charge_id) {
+                                    extraInfo += `
+                                        <div class="card">
+                                            <div class="label">Telegram Charge ID</div>
+                                            <div class="value">${rawResponseData.telegram_payment_charge_id}</div>
+                                        </div>
+                                    `;
+                                }
+                                if (rawResponseData.provider_payment_charge_id) {
+                                    extraInfo += `
+                                        <div class="card">
+                                            <div class="label">Provider Charge ID</div>
+                                            <div class="value">${rawResponseData.provider_payment_charge_id}</div>
+                                        </div>
+                                    `;
+                                }
+                            }
+                        } catch (e) {
+                            console.error('Error parsing raw_response:', e);
+                        }
+                    }
+                    
+                    content.innerHTML = `
+                        <div style="display: grid; gap: 12px;">
+                            <div class="card">
+                                <div class="label">ID платежа</div>
+                                <div class="value">${payment.id}</div>
+                            </div>
+                            <div class="card">
+                                <div class="label">Провайдер</div>
+                                <div class="value">${payment.provider || '—'}</div>
+                            </div>
+                            <div class="card">
+                                <div class="label">Сумма</div>
+                                <div class="value">${amountRub} RUB</div>
+                            </div>
+                            <div class="card">
+                                <div class="label">Валюта</div>
+                                <div class="value">${payment.currency || '—'}</div>
+                            </div>
+                            <div class="card">
+                                <div class="label">Статус</div>
+                                <div class="value"><span class="badge ${statusBadge}">${statusText}</span></div>
+                            </div>
+                            <div class="card">
+                                <div class="label">External ID</div>
+                                <div class="value">${payment.external_id || '—'}</div>
+                            </div>
+                            <div class="card">
+                                <div class="label">Создан</div>
+                                <div class="value">${payment.created_at || '—'}</div>
+                            </div>
+                            ${extraInfo}
+                            ${payment.raw_response ? `
+                            <div class="card">
+                                <div class="label" style="cursor: pointer; user-select: none;" onclick="this.nextElementSibling.style.display = this.nextElementSibling.style.display === 'none' ? 'block' : 'none'; this.textContent = this.nextElementSibling.style.display === 'none' ? 'Raw Response (развернуть)' : 'Raw Response (свернуть)'">
+                                    Raw Response (развернуть)
+                                </div>
+                                <div class="value" style="font-family: monospace; font-size: 0.75em; word-break: break-all; max-height: 300px; overflow-y: auto; background: #f8f9fa; padding: 8px; border-radius: 4px; display: none;">
+                                    <pre style="margin: 0; white-space: pre-wrap;">${JSON.stringify(rawResponseData || JSON.parse(payment.raw_response), null, 2)}</pre>
+                                </div>
+                            </div>
+                            ` : ''}
+                        </div>
+                    `;
+                    openModal('modal-payment-detail');
+                })
+                .catch(err => {
+                    console.error('Ошибка загрузки деталей платежа:', err);
+                    alert('Ошибка загрузки деталей платежа');
+                });
+        }
+
+        // Загружаем количество платежей при загрузке страницы
+        function loadPaymentsCount() {
+            fetch(`/users/${userId}/payments?limit=200`)
+                .then(res => res.json())
+                .then(allPayments => {
+                    const countEl = document.getElementById('payments-count');
+                    if (countEl) {
+                        countEl.textContent = allPayments.length || 0;
+                    }
+                })
+                .catch(err => {
+                    console.error('Ошибка загрузки количества платежей:', err);
+                    const countEl = document.getElementById('payments-count');
+                    if (countEl) {
+                        countEl.textContent = '—';
+                    }
+                });
+        }
+
+        // Загружаем платежи при открытии модального окна
+        const paymentsModal = document.getElementById('modal-payments');
+        if (paymentsModal) {
+            // Используем MutationObserver для отслеживания изменения класса 'show'
+            const observer = new MutationObserver(function(mutations) {
+                mutations.forEach(function(mutation) {
+                    if (mutation.type === 'attributes' && mutation.attributeName === 'class') {
+                        if (paymentsModal.classList.contains('show')) {
+                            loadPayments(1); // Загружаем первую страницу
+                        }
+                    }
+                });
+            });
+            observer.observe(paymentsModal, { attributes: true });
+        }
+
+        // Загружаем количество платежей при загрузке страницы
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', () => {
+                loadPaymentsCount();
+            });
+        } else {
+            loadPaymentsCount();
+        }
+    </script>
+    
+    <!-- Индикатор загрузки -->
+    <div class="loading-overlay show" id="loading-overlay">
+        <div style="text-align: center;">
+            <div class="loading-spinner"></div>
+            <div class="loading-text">Загрузка...</div>
+        </div>
+    </div>
+    
+    <script>
+        // Универсальный скрипт для управления оверлеем загрузки
+        (function() {
+            const loadingOverlay = document.getElementById('loading-overlay');
+            
+            function hideOverlay() {
+                if (loadingOverlay) {
+                    loadingOverlay.classList.remove('show');
+                    document.body.classList.remove('loading');
+                }
+            }
+            
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', hideOverlay);
+            } else {
+                hideOverlay();
+            }
+            
+            window.addEventListener('load', hideOverlay);
+            
+            // Обрабатываем навигацию назад/вперед (когда страница загружается из кэша)
+            window.addEventListener('pageshow', function(event) {
+                if (event.persisted) {
+                    hideOverlay();
+                }
+            });
+            
+            document.addEventListener('DOMContentLoaded', function() {
+                const links = document.querySelectorAll('a[href^="/admin/web"]');
+                
+                links.forEach(link => {
+                    link.addEventListener('click', function(e) {
+                        if (this.hasAttribute('download') || this.target === '_blank' || this.href.includes('/download')) {
+                            if (loadingOverlay) {
+                                loadingOverlay.classList.remove('show');
+                                document.body.classList.remove('loading');
+                            }
+                            return;
+                        }
+                        if (loadingOverlay) {
+                            loadingOverlay.classList.add('show');
+                            document.body.classList.add('loading');
+                        }
+                    });
+                });
+                
+                document.addEventListener('click', function(e) {
+                    const target = e.target.closest('a[href*="/download"]');
+                    if (target && loadingOverlay) {
+                        loadingOverlay.classList.remove('show');
+                        document.body.classList.remove('loading');
+                    }
+                });
+                
+                const forms = document.querySelectorAll('form');
+                forms.forEach(form => {
+                    form.addEventListener('submit', function() {
+                        if (loadingOverlay) {
+                            loadingOverlay.classList.add('show');
+                            document.body.classList.add('loading');
+                        }
+                    });
+                });
+            });
+        })();
+    </script>
+</body>
+</html>
+

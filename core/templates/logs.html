@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Логи админ-панели</title>
+    <link rel="stylesheet" href="/static/loading.css">
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            overflow: hidden;
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+        .header h1 {
+            font-size: 2em;
+            margin: 0;
+        }
+        .header-actions {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        .topbar {
+            padding: 16px 28px;
+            border-bottom: 1px solid #eef1f5;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        th, td {
+            padding: 10px 12px;
+            border-bottom: 1px solid #eef1f5;
+            font-size: 0.9em;
+            text-align: left;
+        }
+        thead {
+            background: #f8f9fb;
+            color: #333;
+        }
+        .btn {
+            border: none;
+            padding: 6px 10px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 0.85em;
+            text-decoration: none;
+        }
+        .btn-primary { background: #667eea; color: white; }
+        .btn-muted { background: #e9ecef; color: #333; }
+        .input {
+            padding: 6px 8px;
+            border: 1px solid #e1e5ea;
+            border-radius: 8px;
+            font-size: 0.9em;
+        }
+        .badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 0.75em;
+            font-weight: 600;
+            background: #e9ecef;
+            color: #495057;
+        }
+        .badge-critical {
+            background: #dc3545;
+            color: white;
+        }
+        .badge-warning {
+            background: #ffc107;
+            color: #856404;
+        }
+        .badge-success {
+            background: #28a745;
+            color: white;
+        }
+        .badge-backup {
+            background: #6f42c1;
+            color: white;
+        }
+        .badge-payment {
+            background: #17a2b8;
+            color: white;
+        }
+        .badge-payment-created {
+            background: #17a2b8;
+            color: white;
+        }
+        .badge-payment-status {
+            background: #fd7e14;
+            color: white;
+        }
+        .log-row-critical {
+            background: #fff5f5;
+            border-left: 3px solid #dc3545;
+        }
+        .log-row-warning {
+            background: #fffbf0;
+            border-left: 3px solid #ffc107;
+        }
+        .log-row-backup {
+            background: #f3e8ff;
+            border-left: 3px solid #6f42c1;
+        }
+        .log-row-payment {
+            background: #e7f3f5;
+            border-left: 3px solid #17a2b8;
+        }
+        .log-row-payment-created {
+            background: #e7f3f5;
+            border-left: 3px solid #17a2b8;
+        }
+        .log-row-payment-status {
+            background: #fff4e6;
+            border-left: 3px solid #fd7e14;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div>
+                <div style="font-size:14px; opacity:0.9;">Логи</div>
+                <h2 style="margin:4px 0 0 0;">Действия админов и системы</h2>
+            </div>
+            <div style="display:flex; gap:10px; align-items:center;">
+                <a class="btn btn-muted" href="/admin/web/dashboard" style="text-decoration:none;">← К дашборду</a>
+                <a class="btn btn-primary" href="/admin/web/export/logs.csv" style="text-decoration:none;">📥 CSV</a>
+                <a class="btn btn-primary" href="/admin/web/export/logs.xlsx" style="text-decoration:none;">📊 Excel</a>
+            </div>
+        </div>
+        <div class="topbar">
+            <form method="get" action="/admin/web/logs" style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                <input class="input" type="text" name="q" placeholder="tg_id / admin_tg_id / текст" value="{{ q or '' }}">
+                <select class="input" name="action">
+                    <option value="all" {% if action_filter == 'all' %}selected{% endif %}>Все действия</option>
+                    <option value="user_registered" {% if action_filter == 'user_registered' %}selected{% endif %}>Регистрация</option>
+                    <option value="balance_credited" {% if action_filter == 'balance_credited' %}selected{% endif %}>balance_credited</option>
+                    <option value="user_blocked" {% if action_filter == 'user_blocked' %}selected{% endif %}>user_blocked</option>
+                    <option value="user_unblocked" {% if action_filter == 'user_unblocked' %}selected{% endif %}>user_unblocked</option>
+                    <option value="subscription_created" {% if action_filter == 'subscription_created' %}selected{% endif %}>subscription_created</option>
+                    <option value="subscription_activated" {% if action_filter == 'subscription_activated' %}selected{% endif %}>subscription_activated</option>
+                    <option value="payment_processed" {% if action_filter == 'payment_processed' %}selected{% endif %}>payment_processed</option>
+                    <option value="payment_created" {% if action_filter == 'payment_created' %}selected{% endif %}>payment_created</option>
+                    <option value="payment_status_changed" {% if action_filter == 'payment_status_changed' %}selected{% endif %}>payment_status_changed</option>
+                    <option value="payment_webhook_received" {% if action_filter == 'payment_webhook_received' %}selected{% endif %}>payment_webhook_received</option>
+                    <option value="backup_action" {% if action_filter == 'backup_action' %}selected{% endif %}>backup_action</option>
+                    <option value="admin_action" {% if action_filter == 'admin_action' %}selected{% endif %}>Прочее (admin_action)</option>
+                </select>
+                <button class="btn btn-primary" type="submit">Фильтр</button>
+            </form>
+        </div>
+        <div style="padding: 16px 28px;">
+            <table>
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Тип</th>
+                        <th>Пользователь</th>
+                        <th>Админ</th>
+                        <th>Детали</th>
+                        <th>Время (МСК)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for log in logs %}
+                    {% set is_critical = log.action in ['user_blocked', 'balance_credited', 'user_unblocked'] %}
+                    {% set is_warning = log.action in ['subscription_created', 'subscription_activated', 'payment_processed'] %}
+                    {% set is_backup = log.action == 'backup_action' %}
+                    {% set is_payment_created = log.action == 'payment_created' %}
+                    {% set is_payment_status = log.action == 'payment_status_changed' %}
+                    {% set is_payment_other = log.action in ['payment_processed', 'payment_webhook_received'] %}
+                    <tr class="{% if is_critical %}log-row-critical{% elif is_warning %}log-row-warning{% elif is_backup %}log-row-backup{% elif is_payment_created %}log-row-payment-created{% elif is_payment_status %}log-row-payment-status{% elif is_payment_other %}log-row-payment{% endif %}">
+                        <td>{{ log.id }}</td>
+                        <td>
+                            <span class="badge {% if is_critical %}badge-critical{% elif is_warning %}badge-warning{% elif log.action == 'user_registered' %}badge-success{% elif is_backup %}badge-backup{% elif is_payment_created %}badge-payment-created{% elif is_payment_status %}badge-payment-status{% elif is_payment_other %}badge-payment{% endif %}">
+                                {{ log.action }}
+                            </span>
+                        </td>
+                        <td>
+                            {% if log.user_tg_id %}
+                            <a href="/admin/web/users/{{ log.user_tg_id }}" style="color:#667eea; text-decoration:none;">{{ log.user_tg_id }}</a>
+                            {% else %}—{% endif %}
+                        </td>
+                        <td>{{ log.admin_tg_id or '—' }}</td>
+                        <td>{{ log.details or '—' }}</td>
+                        <td>{{ log.created_at }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            <div style="margin-top:12px; display:flex; gap:8px;">
+                {% if has_prev %}
+                <a class="btn btn-muted" href="/admin/web/logs?page={{ page-1 }}&action={{ action_filter }}&q={{ q or '' }}">← Предыдущая</a>
+                {% endif %}
+                {% if has_next %}
+                <a class="btn btn-muted" href="/admin/web/logs?page={{ page+1 }}&action={{ action_filter }}&q={{ q or '' }}">Следующая →</a>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    
+    <!-- Индикатор загрузки -->
+    <div class="loading-overlay show" id="loading-overlay">
+        <div style="text-align: center;">
+            <div class="loading-spinner"></div>
+            <div class="loading-text">Загрузка...</div>
+        </div>
+    </div>
+    
+    <script>
+        // Универсальный скрипт для управления оверлеем загрузки
+        (function() {
+            const loadingOverlay = document.getElementById('loading-overlay');
+            
+            function hideOverlay() {
+                if (loadingOverlay) {
+                    loadingOverlay.classList.remove('show');
+                    document.body.classList.remove('loading');
+                }
+            }
+            
+            // Скрываем оверлей после загрузки DOM
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', hideOverlay);
+            } else {
+                hideOverlay();
+            }
+            
+            // Дополнительно скрываем после полной загрузки
+            window.addEventListener('load', hideOverlay);
+            
+            // Обрабатываем навигацию назад/вперед (когда страница загружается из кэша)
+            window.addEventListener('pageshow', function(event) {
+                if (event.persisted) {
+                    hideOverlay();
+                }
+            });
+            
+            // Показываем оверлей при переходах
+            document.addEventListener('DOMContentLoaded', function() {
+                const links = document.querySelectorAll('a[href^="/admin/web"]');
+                
+                links.forEach(link => {
+                    link.addEventListener('click', function(e) {
+                        if (this.hasAttribute('download') || this.target === '_blank' || this.href.includes('/download')) {
+                            if (loadingOverlay) {
+                                loadingOverlay.classList.remove('show');
+                                document.body.classList.remove('loading');
+                            }
+                            return;
+                        }
+                        if (loadingOverlay) {
+                            loadingOverlay.classList.add('show');
+                            document.body.classList.add('loading');
+                        }
+                    });
+                });
+                
+                // Обработка скачивания файлов
+                document.addEventListener('click', function(e) {
+                    const target = e.target.closest('a[href*="/download"]');
+                    if (target && loadingOverlay) {
+                        loadingOverlay.classList.remove('show');
+                        document.body.classList.remove('loading');
+                    }
+                });
+                
+                // Показываем оверлей при отправке форм
+                const forms = document.querySelectorAll('form');
+                forms.forEach(form => {
+                    form.addEventListener('submit', function() {
+                        if (loadingOverlay) {
+                            loadingOverlay.classList.add('show');
+                            document.body.classList.add('loading');
+                        }
+                    });
+                });
+            });
+        })();
+    </script>
+</body>
+</html>
+
+

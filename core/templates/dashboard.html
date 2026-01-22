@@ -1,0 +1,1084 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Дашборд - Админ-панель</title>
+    <link rel="stylesheet" href="/static/loading.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1600px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+        
+        .header h1 {
+            font-size: 2em;
+            margin: 0;
+        }
+        
+        .header-actions {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        
+        .btn {
+            border: none;
+            padding: 10px 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 0.9em;
+            text-decoration: none;
+            display: inline-block;
+        }
+        
+        .btn-primary { background: rgba(255,255,255,0.2); color: white; }
+        .btn-primary:hover { background: rgba(255,255,255,0.3); }
+        .btn-muted { background: #e9ecef; color: #333; }
+        .btn-muted:hover { background: #dee2e6; }
+        
+        .content {
+            padding: 30px;
+        }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .stat-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 24px;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+        
+        .stat-card h3 {
+            font-size: 2.5em;
+            margin-bottom: 8px;
+            font-weight: 700;
+        }
+        
+        .stat-card p {
+            opacity: 0.9;
+            font-size: 0.95em;
+        }
+        
+        .stat-card.secondary {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        }
+        
+        .stat-card.success {
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+        }
+        
+        .stat-card.warning {
+            background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);
+        }
+        
+        .section {
+            margin-bottom: 30px;
+        }
+        
+        .section-title {
+            font-size: 1.5em;
+            margin-bottom: 20px;
+            color: #333;
+            font-weight: 600;
+        }
+        
+        .period-stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 30px;
+        }
+        
+        .period-card {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 10px;
+            border-left: 4px solid #667eea;
+        }
+        
+        .period-card h4 {
+            color: #667eea;
+            margin-bottom: 10px;
+            font-size: 1.1em;
+        }
+        
+        .period-card .value {
+            font-size: 1.8em;
+            font-weight: 700;
+            color: #333;
+            margin-bottom: 5px;
+        }
+        
+        .period-card .label {
+            color: #666;
+            font-size: 0.9em;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background: white;
+            border-radius: 10px;
+            overflow: hidden;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+        }
+        
+        thead {
+            background: #667eea;
+            color: white;
+        }
+        
+        th {
+            padding: 15px;
+            text-align: left;
+            font-weight: 600;
+            font-size: 0.9em;
+        }
+        
+        td {
+            padding: 12px 15px;
+            border-bottom: 1px solid #e9ecef;
+        }
+        
+        tbody tr:hover {
+            background: #f8f9fa;
+        }
+        
+        .badge {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 0.8em;
+            font-weight: 600;
+        }
+        
+        .badge-success { background: #d4edda; color: #155724; }
+        .badge-warning { background: #fff3cd; color: #856404; }
+        .badge-danger { background: #f8d7da; color: #721c24; }
+        .badge-info { background: #d1ecf1; color: #0c5460; }
+        
+        .alert-banner {
+            padding: 12px 16px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        
+        .alert-banner.warning {
+            background: #fff3cd;
+            color: #856404;
+            border-left: 4px solid #ffc107;
+        }
+        
+        .alert-banner.danger {
+            background: #f8d7da;
+            color: #721c24;
+            border-left: 4px solid #dc3545;
+        }
+        
+        .alert-banner.info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border-left: 4px solid #17a2b8;
+        }
+        
+        .two-columns {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
+            gap: 30px;
+        }
+        
+        .notifications-bell {
+            position: relative;
+            cursor: pointer;
+            padding: 8px;
+            border-radius: 8px;
+            transition: background 0.2s;
+            font-size: 1.2em;
+        }
+        
+        .notifications-bell:hover {
+            background: rgba(255,255,255,0.2);
+        }
+        
+        .chart-container {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+            margin-bottom: 20px;
+        }
+        
+        .chart-container h3 {
+            margin-bottom: 15px;
+            color: #333;
+            font-size: 1.2em;
+        }
+        
+        .chart-container canvas {
+            max-height: 300px !important;
+        }
+        
+        .notifications-badge {
+            position: absolute;
+            top: 0;
+            right: 0;
+            background: #dc3545;
+            color: white;
+            border-radius: 10px;
+            padding: 2px 6px;
+            font-size: 0.7em;
+            font-weight: 700;
+            min-width: 18px;
+            text-align: center;
+        }
+        
+        .notification-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.35);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 3000;
+        }
+        
+        .notification-overlay.show {
+            display: flex;
+        }
+        
+        .notification-modal {
+            background: white;
+            border-radius: 12px;
+            padding: 24px;
+            width: min(600px, 90vw);
+            max-height: 80vh;
+            overflow-y: auto;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.25);
+        }
+        
+        .notification-item {
+            padding: 12px;
+            border-left: 4px solid #667eea;
+            margin-bottom: 10px;
+            background: #f8f9fa;
+            border-radius: 6px;
+        }
+        
+        .notification-item.success {
+            border-left-color: #28a745;
+        }
+        
+        .notification-item.warning {
+            border-left-color: #ffc107;
+        }
+        
+        .notification-item.danger {
+            border-left-color: #dc3545;
+        }
+        
+        .notification-item.info {
+            border-left-color: #17a2b8;
+        }
+        
+        .chart-container {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+            margin-bottom: 20px;
+        }
+        
+        .chart-container h3 {
+            margin-bottom: 15px;
+            color: #333;
+            font-size: 1.2em;
+        }
+        
+        @media (max-width: 768px) {
+            .two-columns {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+    <!-- Индикатор загрузки (показывается сразу при загрузке страницы) -->
+    <div class="loading-overlay show" id="loading-overlay">
+        <div style="text-align: center;">
+            <div class="loading-spinner"></div>
+            <div class="loading-text">Загрузка...</div>
+        </div>
+    </div>
+    
+    <div class="container">
+        <div class="header">
+            <h1>📊 Дашборд</h1>
+            <div class="header-actions">
+                <div class="notifications-bell" id="notifications-bell" onclick="toggleNotifications()" title="Уведомления">
+                    🔔
+                    <span class="notifications-badge" id="notifications-badge" style="display:none;">0</span>
+                </div>
+                <a class="btn btn-primary" href="/admin/web/users">👥 Пользователи</a>
+                <a class="btn btn-primary" href="/admin/web/payments">💳 Платежи</a>
+                <a class="btn btn-primary" href="/admin/web/tickets">🧾 Тикеты</a>
+                <a class="btn btn-primary" href="/admin/web/logs">📋 Логи</a>
+                <a class="btn btn-primary" href="/admin/web/settings">⚙️ Настройки</a>
+                <a class="btn btn-primary" href="/admin/web/promo-codes">🎟️ Промокоды</a>
+                <a class="btn btn-primary" href="/admin/web/subscription-plans">📦 Тарифы</a>
+                <a class="btn btn-primary" href="/admin/web/backups">💾 Бэкапы</a>
+                <a class="btn btn-muted" href="/admin/logout">🚪 Выйти</a>
+            </div>
+        </div>
+        
+        <div class="content">
+            <!-- Алерты -->
+            {% if alerts %}
+            <div class="section" style="margin-bottom: 20px;">
+                {% for alert in alerts %}
+                <div class="alert-banner {{ alert.type }}">
+                    <div style="flex:1;">
+                        <strong>{{ alert.title }}</strong>
+                        <div style="margin-top:4px;">{{ alert.message }}</div>
+                    </div>
+                    {% if alert.link %}
+                    <a href="{{ alert.link }}" class="btn btn-primary" style="text-decoration:none; padding:6px 12px; font-size:0.9em;">Перейти</a>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+            
+            <!-- Основная статистика -->
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <h3>{{ total_users }}</h3>
+                    <p>Всего пользователей</p>
+                </div>
+                <div class="stat-card secondary">
+                    <h3>{{ total_active }}</h3>
+                    <p>Активных пользователей</p>
+                </div>
+                <div class="stat-card success">
+                    <h3>{{ "%.2f"|format(total_balance_rub) }} RUB</h3>
+                    <p>Общий баланс</p>
+                </div>
+                <div class="stat-card warning">
+                    <h3>{{ active_subscriptions }}</h3>
+                    <p>Активных подписок</p>
+                </div>
+                <div class="stat-card">
+                    <h3>{{ "%.2f"|format(total_revenue_rub) }} RUB</h3>
+                    <p>Общая выручка</p>
+                </div>
+                <div class="stat-card secondary">
+                    <h3>{{ total_tickets }}</h3>
+                    <p>Всего тикетов</p>
+                </div>
+            </div>
+            
+            <!-- Статистика по периодам -->
+            <div class="section">
+                <h2 class="section-title">📈 Статистика за периоды</h2>
+                
+                <h3 style="margin: 20px 0 15px 0; color: #666;">Новые пользователи</h3>
+                <div class="period-stats">
+                    <div class="period-card">
+                        <h4>Сегодня</h4>
+                        <div class="value">{{ users_today }}</div>
+                        <div class="label">пользователей</div>
+                    </div>
+                    <div class="period-card">
+                        <h4>За неделю</h4>
+                        <div class="value">{{ users_week }}</div>
+                        <div class="label">пользователей</div>
+                    </div>
+                    <div class="period-card">
+                        <h4>За месяц</h4>
+                        <div class="value">{{ users_month }}</div>
+                        <div class="label">пользователей</div>
+                    </div>
+                </div>
+                
+                <h3 style="margin: 20px 0 15px 0; color: #666;">Платежи</h3>
+                <div class="period-stats">
+                    <div class="period-card">
+                        <h4>Сегодня</h4>
+                        <div class="value">{{ payments_today }}</div>
+                        <div class="label">платежей</div>
+                        <div class="value" style="font-size: 1.2em; margin-top: 5px;">{{ "%.2f"|format(revenue_today) }} RUB</div>
+                    </div>
+                    <div class="period-card">
+                        <h4>За неделю</h4>
+                        <div class="value">{{ payments_week }}</div>
+                        <div class="label">платежей</div>
+                        <div class="value" style="font-size: 1.2em; margin-top: 5px;">{{ "%.2f"|format(revenue_week) }} RUB</div>
+                    </div>
+                    <div class="period-card">
+                        <h4>За месяц</h4>
+                        <div class="value">{{ payments_month }}</div>
+                        <div class="label">платежей</div>
+                        <div class="value" style="font-size: 1.2em; margin-top: 5px;">{{ "%.2f"|format(revenue_month) }} RUB</div>
+                    </div>
+                </div>
+                
+                <h3 style="margin: 20px 0 15px 0; color: #666;">Тикеты</h3>
+                <div class="period-stats">
+                    <div class="period-card">
+                        <h4>Сегодня</h4>
+                        <div class="value">{{ tickets_today }}</div>
+                        <div class="label">тикетов</div>
+                    </div>
+                    <div class="period-card">
+                        <h4>За неделю</h4>
+                        <div class="value">{{ tickets_week }}</div>
+                        <div class="label">тикетов</div>
+                    </div>
+                    <div class="period-card">
+                        <h4>За месяц</h4>
+                        <div class="value">{{ tickets_month }}</div>
+                        <div class="label">тикетов</div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Детальная статистика -->
+            <div class="section">
+                <h2 class="section-title">📊 Детальная статистика</h2>
+                <div class="period-stats">
+                    <div class="period-card">
+                        <h4>Пользователи</h4>
+                        <div class="value">{{ total_active }}</div>
+                        <div class="label">активных / {{ total_blocked }} заблокированных</div>
+                    </div>
+                    <div class="period-card">
+                        <h4>Подписки</h4>
+                        <div class="value">{{ active_subscriptions }}</div>
+                        <div class="label">активных из {{ total_subscriptions }} всего</div>
+                    </div>
+                    <div class="period-card">
+                        <h4>Платежи</h4>
+                        <div class="value">{{ succeeded_payments }}</div>
+                        <div class="label">успешных из {{ total_payments }} всего</div>
+                    </div>
+                    <div class="period-card">
+                        <h4>Тикеты</h4>
+                        <div class="value">{{ new_tickets }}</div>
+                        <div class="label">новых / {{ in_progress_tickets }} в работе / {{ closed_tickets }} закрыто</div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Статус серверов -->
+            {% if servers_status %}
+            <div class="section">
+                <h2 class="section-title">🖥️ Статус серверов</h2>
+                <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 15px;">
+                    {% for server in servers_status %}
+                    <div class="stat-card" style="{% if not server.is_online %}border: 2px solid #e74c3c;{% endif %}">
+                        <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 10px;">
+                            <h3 style="margin: 0; font-size: 1.1em;">{{ server.name }}</h3>
+                            <span class="badge {% if server.is_online %}badge-success{% else %}badge-danger{% endif %}" style="font-size: 0.8em;">
+                                {% if server.is_online %}🟢 Онлайн{% else %}🔴 Офлайн{% endif %}
+                            </span>
+                        </div>
+                        <p style="margin: 5px 0; color: #666; font-size: 0.9em;">
+                            <strong>Хост:</strong> {{ server.host }}<br>
+                            <strong>Локация:</strong> {{ server.location }}<br>
+                            {% if server.response_time_ms %}
+                            <strong>Время отклика:</strong> {{ server.response_time_ms }} мс<br>
+                            {% endif %}
+                            <strong>Подключений:</strong> {{ server.active_connections }}{% if server.capacity %} / {{ server.capacity }}{% endif %}<br>
+                            {% if server.checked_at %}
+                            <strong>Проверено:</strong> {{ server.checked_at }}<br>
+                            {% endif %}
+                            {% if server.error_message %}
+                            <span style="color: #e74c3c; font-size: 0.85em;">⚠️ {{ server.error_message }}</span>
+                            {% endif %}
+                        </p>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+            
+            <!-- Последние бэкапы -->
+            <div class="section">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                    <h2 class="section-title">💾 Последние резервные копии</h2>
+                    <div style="display: flex; gap: 10px;">
+                        <button class="btn btn-success" onclick="createBackup()" style="padding: 8px 16px; font-size: 0.9em;">➕ Создать бэкап</button>
+                        <a href="/admin/web/backups" class="btn btn-primary" style="padding: 8px 16px; font-size: 0.9em;">Все бэкапы →</a>
+                    </div>
+                </div>
+                <div id="recent-backups" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 15px;">
+                    <div style="text-align: center; color: #666; padding: 20px;">Загрузка...</div>
+                </div>
+            </div>
+            
+            <!-- Топ пользователей и последние действия -->
+            <div class="two-columns">
+                <div class="section">
+                    <h2 class="section-title">💰 Топ пользователей по балансу</h2>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Username</th>
+                                <th>Баланс</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% if top_users %}
+                            {% for user in top_users %}
+                            <tr>
+                                <td><a href="/admin/web/users/{{ user.tg_id }}" style="color:#667eea; text-decoration:none;">{{ user.tg_id }}</a></td>
+                                <td>{{ user.username }}</td>
+                                <td><strong>{{ "%.2f"|format(user.balance) }} RUB</strong></td>
+                            </tr>
+                            {% endfor %}
+                            {% else %}
+                            <tr>
+                                <td colspan="3" style="text-align:center; color:#666;">Нет данных</td>
+                            </tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                </div>
+                
+                <div class="section">
+                    <h2 class="section-title">🕐 Последние действия</h2>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Действие</th>
+                                <th>Пользователь</th>
+                                <th>Время</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% if recent_logs %}
+                            {% for log in recent_logs %}
+                            <tr>
+                                <td>
+                                    <span class="badge badge-info">{{ log.action }}</span>
+                                </td>
+                                <td>
+                                    {% if log.user_tg_id %}
+                                    <a href="/admin/web/users/{{ log.user_tg_id }}" style="color:#667eea; text-decoration:none;">{{ log.user_tg_id }}</a>
+                                    {% else %}—{% endif %}
+                                </td>
+                                <td>{{ log.created_at }}</td>
+                            </tr>
+                            {% endfor %}
+                            {% else %}
+                            <tr>
+                                <td colspan="3" style="text-align:center; color:#666;">Нет данных</td>
+                            </tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            
+            <!-- Графики -->
+            <div class="section">
+                <h2 class="section-title">📈 Графики и тренды</h2>
+                <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(500px, 1fr)); gap:20px;">
+                    <div class="chart-container">
+                        <h3>Регистрации пользователей</h3>
+                        <canvas id="registrations-chart"></canvas>
+                    </div>
+                    <div class="chart-container">
+                        <h3>Платежи и выручка</h3>
+                        <canvas id="payments-chart"></canvas>
+                    </div>
+                    <div class="chart-container">
+                        <h3>Создание тикетов</h3>
+                        <canvas id="tickets-chart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Модальное окно уведомлений -->
+    <div class="notification-overlay" id="notifications-overlay">
+        <div class="notification-modal">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+                <h2 style="margin:0;">🔔 Уведомления</h2>
+                <button class="btn btn-muted" onclick="toggleNotifications()" style="padding:6px 12px;">✕ Закрыть</button>
+            </div>
+            <div id="notifications-container">
+                <div style="text-align:center; color:#666; padding:20px;">Загрузка...</div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // Система уведомлений
+        let notificationsData = { notifications: [], alerts: [], unread_count: 0 };
+        
+        function loadNotifications() {
+            fetch('/admin/web/api/notifications')
+                .then(res => res.json())
+                .then(data => {
+                    notificationsData = data;
+                    updateNotificationsUI();
+                })
+                .catch(err => console.error('Ошибка загрузки уведомлений:', err));
+        }
+        
+        function updateNotificationsUI() {
+            const badge = document.getElementById('notifications-badge');
+            if (notificationsData.unread_count > 0) {
+                badge.textContent = notificationsData.unread_count > 99 ? '99+' : notificationsData.unread_count;
+                badge.style.display = 'block';
+            } else {
+                badge.style.display = 'none';
+            }
+            
+            // Обновляем содержимое модального окна
+            const container = document.getElementById('notifications-container');
+            if (container) {
+                container.innerHTML = '';
+                
+                // Алерты
+                if (notificationsData.alerts && notificationsData.alerts.length > 0) {
+                    const alertsDiv = document.createElement('div');
+                    alertsDiv.style.marginBottom = '20px';
+                    notificationsData.alerts.forEach(alert => {
+                        const alertEl = document.createElement('div');
+                        alertEl.className = `alert-banner ${alert.type}`;
+                        alertEl.innerHTML = `
+                            <strong>${alert.title}</strong>
+                            <div>${alert.message}</div>
+                        `;
+                        alertsDiv.appendChild(alertEl);
+                    });
+                    container.appendChild(alertsDiv);
+                }
+                
+                // Уведомления
+                if (notificationsData.notifications && notificationsData.notifications.length > 0) {
+                    notificationsData.notifications.forEach(notif => {
+                        const notifEl = document.createElement('div');
+                        notifEl.className = `notification-item ${notif.severity}`;
+                        notifEl.innerHTML = `
+                            <div style="display:flex; justify-content:space-between; align-items:start;">
+                                <div>
+                                    <strong>${notif.title}</strong>
+                                    <div style="margin-top:4px; color:#666; font-size:0.9em;">${notif.message}</div>
+                                </div>
+                                ${notif.count ? `<span style="background:#667eea; color:white; padding:2px 8px; border-radius:10px; font-size:0.8em;">${notif.count}</span>` : ''}
+                            </div>
+                            ${notif.link ? `<a href="${notif.link}" style="display:inline-block; margin-top:8px; color:#667eea; text-decoration:none; font-size:0.9em;">Перейти →</a>` : ''}
+                        `;
+                        container.appendChild(notifEl);
+                    });
+                } else if (notificationsData.alerts.length === 0) {
+                    container.innerHTML = '<div style="text-align:center; color:#666; padding:20px;">Нет новых уведомлений</div>';
+                }
+            }
+        }
+        
+        function toggleNotifications() {
+            const overlay = document.getElementById('notifications-overlay');
+            if (overlay) {
+                overlay.classList.toggle('show');
+                if (overlay.classList.contains('show')) {
+                    loadNotifications();
+                }
+            }
+        }
+        
+        // Загружаем уведомления при загрузке страницы
+        loadNotifications();
+        
+        // Автообновление каждые 30 секунд
+        setInterval(loadNotifications, 30000);
+        
+        // Закрытие модального окна при клике вне его
+        document.addEventListener('click', (e) => {
+            const overlay = document.getElementById('notifications-overlay');
+            if (overlay && e.target === overlay) {
+                overlay.classList.remove('show');
+            }
+        });
+        
+        // Графики
+        let charts = {};
+        
+        function loadCharts() {
+            if (typeof Chart === 'undefined') {
+                console.warn('Chart.js не загружен');
+                return;
+            }
+            
+            fetch('/admin/web/api/dashboard/stats?days=30')
+                .then(res => res.json())
+                .then(data => {
+                    // График регистраций
+                    const regCtx = document.getElementById('registrations-chart');
+                    if (regCtx && !charts.registrations) {
+                        charts.registrations = new Chart(regCtx, {
+                            type: 'line',
+                            data: {
+                                labels: data.registrations.map(r => r.date),
+                                datasets: [{
+                                    label: 'Регистраций',
+                                    data: data.registrations.map(r => r.count),
+                                    borderColor: '#667eea',
+                                    backgroundColor: 'rgba(102, 126, 234, 0.1)',
+                                    tension: 0.4,
+                                    fill: true
+                                }]
+                            },
+                            options: {
+                                responsive: true,
+                                maintainAspectRatio: true,
+                                aspectRatio: 2,
+                                plugins: {
+                                    legend: { display: false }
+                                }
+                            }
+                        });
+                    } else if (charts.registrations) {
+                        charts.registrations.data.labels = data.registrations.map(r => r.date);
+                        charts.registrations.data.datasets[0].data = data.registrations.map(r => r.count);
+                        charts.registrations.update();
+                    }
+                    
+                    // График платежей
+                    const payCtx = document.getElementById('payments-chart');
+                    if (payCtx && !charts.payments) {
+                        charts.payments = new Chart(payCtx, {
+                            type: 'bar',
+                            data: {
+                                labels: data.payments.map(p => p.date),
+                                datasets: [
+                                    {
+                                        label: 'Количество платежей',
+                                        data: data.payments.map(p => p.count),
+                                        backgroundColor: 'rgba(102, 126, 234, 0.6)',
+                                        yAxisID: 'y'
+                                    },
+                                    {
+                                        label: 'Выручка (RUB)',
+                                        data: data.payments.map(p => p.revenue),
+                                        type: 'line',
+                                        borderColor: '#28a745',
+                                        backgroundColor: 'rgba(40, 167, 69, 0.1)',
+                                        yAxisID: 'y1',
+                                        tension: 0.4
+                                    }
+                                ]
+                            },
+                            options: {
+                                responsive: true,
+                                maintainAspectRatio: true,
+                                aspectRatio: 2,
+                                scales: {
+                                    y: {
+                                        type: 'linear',
+                                        position: 'left',
+                                        title: { display: true, text: 'Количество' }
+                                    },
+                                    y1: {
+                                        type: 'linear',
+                                        position: 'right',
+                                        title: { display: true, text: 'RUB' },
+                                        grid: { drawOnChartArea: false }
+                                    }
+                                }
+                            }
+                        });
+                    } else if (charts.payments) {
+                        charts.payments.data.labels = data.payments.map(p => p.date);
+                        charts.payments.data.datasets[0].data = data.payments.map(p => p.count);
+                        charts.payments.data.datasets[1].data = data.payments.map(p => p.revenue);
+                        charts.payments.update();
+                    }
+                    
+                    // График тикетов
+                    const tickCtx = document.getElementById('tickets-chart');
+                    if (tickCtx && !charts.tickets) {
+                        charts.tickets = new Chart(tickCtx, {
+                            type: 'line',
+                            data: {
+                                labels: data.tickets.map(t => t.date),
+                                datasets: [{
+                                    label: 'Тикетов создано',
+                                    data: data.tickets.map(t => t.count),
+                                    borderColor: '#ffc107',
+                                    backgroundColor: 'rgba(255, 193, 7, 0.1)',
+                                    tension: 0.4,
+                                    fill: true
+                                }]
+                            },
+                            options: {
+                                responsive: true,
+                                maintainAspectRatio: true,
+                                aspectRatio: 2,
+                                plugins: {
+                                    legend: { display: false }
+                                }
+                            }
+                        });
+                    } else if (charts.tickets) {
+                        charts.tickets.data.labels = data.tickets.map(t => t.date);
+                        charts.tickets.data.datasets[0].data = data.tickets.map(t => t.count);
+                        charts.tickets.update();
+                    }
+                })
+                .catch(err => console.error('Ошибка загрузки графиков:', err));
+        }
+        
+        // Загружаем графики при загрузке страницы
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', loadCharts);
+        } else {
+            loadCharts();
+        }
+        
+        // Скрываем индикатор загрузки после полной загрузки страницы
+        (function() {
+            const loadingOverlay = document.getElementById('loading-overlay');
+            
+            function hideOverlay() {
+                if (loadingOverlay) {
+                    loadingOverlay.classList.remove('show');
+                    document.body.classList.remove('loading');
+                }
+            }
+            
+            // Скрываем сразу, если страница уже загружена
+            if (document.readyState === 'complete') {
+                setTimeout(hideOverlay, 100);
+            } else {
+                // Скрываем после DOMContentLoaded
+                if (document.readyState === 'loading') {
+                    document.addEventListener('DOMContentLoaded', function() {
+                        setTimeout(hideOverlay, 100);
+                    });
+                }
+                
+                window.addEventListener('load', function() {
+                    setTimeout(hideOverlay, 100);
+                });
+            }
+            
+            // Обрабатываем навигацию назад/вперед (когда страница загружается из кэша)
+            window.addEventListener('pageshow', function(event) {
+                // Если страница загружена из кэша (back/forward navigation)
+                if (event.persisted) {
+                    hideOverlay();
+                }
+            });
+            
+            // Показываем индикатор загрузки при переходах
+            document.addEventListener('DOMContentLoaded', function() {
+                const links = document.querySelectorAll('a[href^="/admin/web"]');
+                
+                links.forEach(link => {
+                    link.addEventListener('click', function(e) {
+                        // Не показываем оверлей для ссылок на скачивание
+                        if (this.hasAttribute('download') || this.target === '_blank' || this.href.includes('/download')) {
+                            // Скрываем оверлей если он был показан
+                            if (loadingOverlay) {
+                                loadingOverlay.classList.remove('show');
+                                document.body.classList.remove('loading');
+                            }
+                            return;
+                        }
+                        if (loadingOverlay) {
+                            loadingOverlay.classList.add('show');
+                            document.body.classList.add('loading');
+                        }
+                    });
+                });
+                
+                // Скрываем оверлей при клике на ссылки скачивания
+                document.querySelectorAll('a[href*="/download"]').forEach(link => {
+                    link.addEventListener('click', function(e) {
+                        // Сразу скрываем оверлей при скачивании
+                        if (loadingOverlay) {
+                            loadingOverlay.classList.remove('show');
+                            document.body.classList.remove('loading');
+                        }
+                    });
+                });
+            });
+        })();
+        
+        // Загрузка последних бэкапов
+        function loadRecentBackups() {
+            fetch('/admin/web/backups?limit=5')
+                .then(res => res.text())
+                .then(html => {
+                    // Парсим HTML и извлекаем список бэкапов
+                    const parser = new DOMParser();
+                    const doc = parser.parseFromString(html, 'text/html');
+                    const backupsTable = doc.querySelector('table tbody');
+                    if (backupsTable) {
+                        const backups = Array.from(backupsTable.querySelectorAll('tr')).slice(0, 5);
+                        const container = document.getElementById('recent-backups');
+                        if (container) {
+                            if (backups.length === 0) {
+                                container.innerHTML = '<div style="text-align: center; color: #666; padding: 20px;">Нет бэкапов</div>';
+                                return;
+                            }
+                            container.innerHTML = '';
+                            backups.forEach(backupRow => {
+                                const cells = backupRow.querySelectorAll('td');
+                                if (cells.length >= 4) {
+                                    const type = cells[0].textContent.trim();
+                                    const size = cells[2].textContent.trim();
+                                    const status = cells[3].textContent.trim();
+                                    const downloadLink = backupRow.querySelector('a[href*="/download"]');
+                                    const backupId = downloadLink ? downloadLink.href.match(/\/backups\/(\d+)\/download/)?.[1] : null;
+                                    
+                                    const card = document.createElement('div');
+                                    card.style.cssText = 'background: white; border-radius: 8px; padding: 15px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);';
+                                    card.innerHTML = `
+                                        <div style="font-weight: 600; margin-bottom: 8px;">${type}</div>
+                                        <div style="color: #666; font-size: 0.9em; margin-bottom: 8px;">Размер: ${size}</div>
+                                        <div style="margin-bottom: 10px;">
+                                            <span class="badge ${status === 'completed' ? 'badge-success' : status === 'in_progress' ? 'badge-warning' : 'badge-danger'}">${status}</span>
+                                        </div>
+                                        ${backupId && status === 'completed' ? `<a href="/admin/web/backups/${backupId}/download" class="btn btn-primary download-link" style="padding:6px 12px; font-size:0.85em; margin-top:10px; display:inline-block; text-decoration:none; width:100%; text-align:center;">⬇️ Скачать</a>` : ''}
+                                    `;
+                                    container.appendChild(card);
+                                }
+                            });
+                        }
+                    }
+                })
+                .catch(err => {
+                    console.error('Ошибка загрузки бэкапов:', err);
+                    const container = document.getElementById('recent-backups');
+                    if (container) {
+                        container.innerHTML = '<div style="text-align: center; color: #e74c3c; padding: 20px;">Ошибка загрузки</div>';
+                    }
+                });
+        }
+        
+        // Обработка скачивания файлов - используем делегирование событий для динамически созданных ссылок
+        document.addEventListener('click', function(e) {
+            const target = e.target.closest('a[href*="/download"]');
+            if (target) {
+                const loadingOverlay = document.getElementById('loading-overlay');
+                // Сразу скрываем оверлей при клике на ссылку скачивания
+                if (loadingOverlay) {
+                    loadingOverlay.classList.remove('show');
+                    document.body.classList.remove('loading');
+                }
+            }
+        });
+        
+        // Создание бэкапа
+        function createBackup() {
+            const loadingOverlay = document.getElementById('loading-overlay');
+            if (loadingOverlay) {
+                loadingOverlay.classList.add('show');
+                document.body.classList.add('loading');
+            }
+            
+            // Получаем CSRF токен из скрытого поля или мета-тега
+            let csrfToken = '';
+            const csrfInput = document.querySelector('input[name="csrf_token"]');
+            const csrfMeta = document.querySelector('meta[name="csrf-token"]');
+            if (csrfInput) {
+                csrfToken = csrfInput.value;
+            } else if (csrfMeta) {
+                csrfToken = csrfMeta.content;
+            }
+            
+            fetch('/admin/web/backups/create', {
+                method: 'POST',
+                headers: {
+                    'X-CSRF-Token': csrfToken
+                },
+                redirect: 'follow'
+            })
+            .then(res => {
+                if (loadingOverlay) {
+                    loadingOverlay.classList.remove('show');
+                    document.body.classList.remove('loading');
+                }
+                // Проверяем редирект или успешный ответ
+                if (res.redirected || res.ok) {
+                    // Если редирект, переходим на новую страницу
+                    if (res.redirected) {
+                        window.location.href = res.url;
+                    } else {
+                        alert('Бэкап создается. Обновите страницу через несколько секунд.');
+                        setTimeout(() => {
+                            loadRecentBackups();
+                        }, 2000);
+                    }
+                } else {
+                    return res.json().then(data => {
+                        alert('Ошибка: ' + (data.detail || 'Неизвестная ошибка'));
+                    }).catch(() => {
+                        alert('Ошибка при создании бэкапа');
+                    });
+                }
+            })
+            .catch(err => {
+                if (loadingOverlay) {
+                    loadingOverlay.classList.remove('show');
+                    document.body.classList.remove('loading');
+                }
+                console.error('Ошибка при создании бэкапа:', err);
+                alert('Произошла ошибка при создании бэкапа.');
+            });
+        }
+        
+        // Загружаем бэкапы при загрузке страницы
+        loadRecentBackups();
+        setInterval(loadRecentBackups, 60000);
+    </script>
+</body>
+</html>
+

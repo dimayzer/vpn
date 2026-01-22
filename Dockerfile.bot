@@ -1,0 +1,17 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Копирование requirements и установка зависимостей
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Копирование кода приложения
+COPY bot/ ./bot/
+COPY env.sample .env.sample
+
+# Запуск бота
+CMD ["python", "-m", "bot.main"]
+
+
+

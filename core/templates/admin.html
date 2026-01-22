@@ -1,0 +1,1085 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Админ-панель fioreVPN</title>
+    <link rel="stylesheet" href="/static/loading.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+        
+        .header h1 {
+            font-size: 2em;
+            margin: 0;
+        }
+        
+        .header-actions {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+        
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            padding: 30px;
+            background: #f8f9fa;
+        }
+        
+        .stat-card {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            text-align: center;
+        }
+        
+        .stat-card h3 {
+            color: #667eea;
+            font-size: 2em;
+            margin-bottom: 5px;
+        }
+        
+        .stat-card p {
+            color: #666;
+            font-size: 0.9em;
+        }
+        
+        .table-container {
+            padding: 30px;
+            overflow-x: auto;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background: white;
+        }
+        
+        thead {
+            background: #667eea;
+            color: white;
+        }
+        
+        th {
+            padding: 15px;
+            text-align: left;
+            font-weight: 600;
+            font-size: 0.9em;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        td {
+            padding: 15px;
+            border-bottom: 1px solid #e9ecef;
+        }
+        
+        tbody tr:hover {
+            background: #f8f9fa;
+        }
+        
+        .badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 0.85em;
+            font-weight: 600;
+        }
+        
+        .badge-active {
+            background: #d4edda;
+            color: #155724;
+        }
+        
+        .badge-inactive {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        
+        .badge-superadmin { background: #ffd6e0; color: #a00036; }
+        .badge-admin { background: #fff3cd; color: #856404; }
+        .badge-moderator { background: #d1ecf1; color: #0c5460; }
+        .badge-user { background: #e9ecef; color: #495057; }
+        
+        .tg-id {
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+            color: #667eea;
+        }
+        
+        .balance {
+            font-weight: 600;
+            color: #28a745;
+        }
+        
+        .code {
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+            background: #f8f9fa;
+            padding: 2px 6px;
+            border-radius: 4px;
+        }
+        
+        
+        @media (max-width: 768px) {
+            .table-container {
+                padding: 15px;
+            }
+            
+            table {
+                font-size: 0.85em;
+            }
+            
+            th, td {
+                padding: 10px 5px;
+            }
+        }
+
+        .actions {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            border: none;
+            padding: 6px 10px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 0.85em;
+            text-decoration: none;
+            display: inline-block;
+            transition: all 0.3s;
+        }
+        .btn-danger { background: #dc3545; color: white; }
+        .btn-success { background: #28a745; color: white; }
+        .header-actions .btn-primary { 
+            background: rgba(255,255,255,0.2); 
+            color: white; 
+            border: 1px solid rgba(255,255,255,0.3);
+            padding: 10px 16px;
+            font-size: 0.9em;
+        }
+        .header-actions .btn-primary:hover { 
+            background: rgba(255,255,255,0.3); 
+        }
+        .header-actions .btn-muted { 
+            background: #e9ecef; 
+            color: #333;
+            padding: 10px 16px;
+            font-size: 0.9em;
+        }
+        .header-actions .btn-muted:hover { 
+            background: #dee2e6; 
+        }
+        .btn-primary { background: #667eea; color: white; }
+        .btn-muted { background: #e9ecef; color: #333; }
+
+        .input {
+            padding: 6px 8px;
+            border: 1px solid #e1e5ea;
+            border-radius: 8px;
+            font-size: 0.9em;
+            width: 110px;
+        }
+
+        .topbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+            padding: 16px 30px;
+            background: #ffffff;
+            border-bottom: 1px solid #eef1f5;
+        }
+
+        .topbar-left {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+            color: #666;
+            font-size: 0.95em;
+        }
+        
+        .notifications-bell {
+            position: relative;
+            cursor: pointer;
+            padding: 8px;
+            border-radius: 8px;
+            transition: background 0.2s;
+        }
+        
+        .notifications-bell:hover {
+            background: rgba(102, 126, 234, 0.1);
+        }
+        
+        .notifications-badge {
+            position: absolute;
+            top: 0;
+            right: 0;
+            background: #dc3545;
+            color: white;
+            border-radius: 10px;
+            padding: 2px 6px;
+            font-size: 0.7em;
+            font-weight: 700;
+            min-width: 18px;
+            text-align: center;
+        }
+        
+        .notification-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.35);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 3000;
+        }
+        
+        .notification-overlay.show {
+            display: flex;
+        }
+        
+        .notification-modal {
+            background: white;
+            border-radius: 12px;
+            padding: 24px;
+            width: min(600px, 90vw);
+            max-height: 80vh;
+            overflow-y: auto;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.25);
+        }
+        
+        .notification-item {
+            padding: 12px;
+            border-left: 4px solid #667eea;
+            margin-bottom: 10px;
+            background: #f8f9fa;
+            border-radius: 6px;
+        }
+        
+        .notification-item.success {
+            border-left-color: #28a745;
+        }
+        
+        .notification-item.warning {
+            border-left-color: #ffc107;
+        }
+        
+        .notification-item.danger {
+            border-left-color: #dc3545;
+        }
+        
+        .notification-item.info {
+            border-left-color: #17a2b8;
+        }
+        
+        .alert-banner {
+            padding: 12px 16px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        
+        .alert-banner.warning {
+            background: #fff3cd;
+            color: #856404;
+            border-left: 4px solid #ffc107;
+        }
+        
+        /* Modal для массовых операций */
+        .overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.35);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 2000;
+        }
+        .overlay.show { display: flex; }
+        .modal {
+            background: white;
+            border-radius: 12px;
+            padding: 22px;
+            width: min(440px, 92vw);
+            box-shadow: 0 10px 40px rgba(0,0,0,0.25);
+        }
+        .modal h3 {
+            margin: 0 0 12px;
+        }
+        body.backdrop-blur .container {
+            filter: blur(4px);
+        }
+        
+        .alert-banner.danger {
+            background: #f8d7da;
+            color: #721c24;
+            border-left: 4px solid #dc3545;
+        }
+        
+        .alert-banner.info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border-left: 4px solid #17a2b8;
+        }
+
+        .search {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>👥 Пользователи</h1>
+            <div class="header-actions">
+                <div class="notifications-bell" id="notifications-bell" onclick="toggleNotifications()" title="Уведомления">
+                    🔔
+                    <span class="notifications-badge" id="notifications-badge" style="display:none;">0</span>
+                </div>
+                <a class="btn btn-primary" href="/admin/web/dashboard">📊 Дашборд</a>
+                <a class="btn btn-primary" href="/admin/web/users">👥 Пользователи</a>
+                <a class="btn btn-primary" href="/admin/web/payments">💳 Платежи</a>
+                <a class="btn btn-primary" href="/admin/web/tickets">🧾 Тикеты</a>
+                <a class="btn btn-primary" href="/admin/web/logs">📋 Логи</a>
+                <a class="btn btn-primary" href="/admin/web/settings">⚙️ Настройки</a>
+                <a class="btn btn-primary" href="/admin/web/promo-codes">🎟️ Промокоды</a>
+                <a class="btn btn-primary" href="/admin/web/subscription-plans">📦 Тарифы</a>
+                <a class="btn btn-primary" href="/admin/web/backups">💾 Бэкапы</a>
+                <a class="btn btn-muted" href="/admin/users/export.csv">📥 CSV</a>
+                <a class="btn btn-muted" href="/admin/users/export.xlsx">📊 Excel</a>
+                <a class="btn btn-muted" href="/admin/logout">🚪 Выйти</a>
+            </div>
+        </div>
+
+        <div class="topbar">
+            <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                <form class="search" method="get" action="/admin/web/users" style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+                    <input class="input" style="width:200px" type="text" name="q" placeholder="Поиск: tg_id, username, имя" value="{{ q }}">
+                    <select class="input" name="role" style="width:150px;">
+                        <option value="all" {% if role_filter == 'all' %}selected{% endif %}>Все роли</option>
+                        <option value="superadmin" {% if role_filter == 'superadmin' %}selected{% endif %}>Главный админ</option>
+                        <option value="admin" {% if role_filter == 'admin' %}selected{% endif %}>Админ</option>
+                        <option value="moderator" {% if role_filter == 'moderator' %}selected{% endif %}>Модератор</option>
+                        <option value="user" {% if role_filter == 'user' %}selected{% endif %}>Пользователь</option>
+                    </select>
+                    <select class="input" name="reg_period" style="width:150px;">
+                        <option value="all" {% if reg_filter == 'all' %}selected{% endif %}>За всё время</option>
+                        <option value="today" {% if reg_filter == 'today' %}selected{% endif %}>Сегодня</option>
+                        <option value="7d" {% if reg_filter == '7d' %}selected{% endif %}>7 дней</option>
+                        <option value="30d" {% if reg_filter == '30d' %}selected{% endif %}>30 дней</option>
+                    </select>
+                    <input class="input" style="width:100px" type="number" step="0.01" name="balance_min" placeholder="Баланс от" value="{{ balance_min }}">
+                    <input class="input" style="width:100px" type="number" step="0.01" name="balance_max" placeholder="Баланс до" value="{{ balance_max }}">
+                    <button class="btn btn-primary" type="submit">🔎 Найти</button>
+                </form>
+                <a class="btn btn-muted" href="/admin/web/users" style="text-decoration:none;">✖ Сброс</a>
+            </div>
+        </div>
+        
+        <div class="stats">
+            <a class="stat-card" id="stat-total" href="/admin/web/users?status=all{% if q %}&q={{ q }}{% endif %}{% if role_filter %}&role={{ role_filter }}{% endif %}{% if reg_filter %}&reg_period={{ reg_filter }}{% endif %}" style="text-decoration:none; color:inherit; border: 2px solid {% if status == 'all' %}#667eea{% else %}transparent{% endif %};">
+                <h3 id="stat-total-value">{{ total_users }}</h3>
+                <p>Всего пользователей</p>
+            </a>
+            <a class="stat-card" id="stat-active" href="/admin/web/users?status=active{% if q %}&q={{ q }}{% endif %}{% if role_filter %}&role={{ role_filter }}{% endif %}{% if reg_filter %}&reg_period={{ reg_filter }}{% endif %}" style="text-decoration:none; color:inherit; border: 2px solid {% if status == 'active' %}#667eea{% else %}transparent{% endif %};">
+                <h3 id="stat-active-value">{{ total_active }}</h3>
+                <p>Активных</p>
+            </a>
+            <a class="stat-card" id="stat-blocked" href="/admin/web/users?status=blocked{% if q %}&q={{ q }}{% endif %}{% if role_filter %}&role={{ role_filter }}{% endif %}{% if reg_filter %}&reg_period={{ reg_filter }}{% endif %}" style="text-decoration:none; color:inherit; border: 2px solid {% if status == 'blocked' %}#667eea{% else %}transparent{% endif %};">
+                <h3 id="stat-blocked-value">{{ total_blocked }}</h3>
+                <p>Заблокированных</p>
+            </a>
+        </div>
+        
+        <div class="table-container">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px; flex-wrap:wrap; gap:10px;">
+                <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                    <button class="btn btn-primary" id="select-all-btn" onclick="selectAllUsers()">Выбрать все</button>
+                    <button class="btn btn-muted" id="deselect-all-btn" onclick="deselectAll()" style="display:none;">Снять выбор</button>
+                    <span id="selected-count" style="color:#666; font-size:0.9em;"></span>
+                </div>
+                <div id="bulk-actions" style="display:none; flex-direction:row; gap:10px; align-items:center; flex-wrap:wrap;">
+                    <button class="btn btn-danger" onclick="openBulkModal('block')">🚫 Заблокировать</button>
+                    <button class="btn btn-success" onclick="openBulkModal('unblock')">✅ Разблокировать</button>
+                    <button class="btn btn-primary" onclick="openBulkModal('credit')">💰 Изменить баланс</button>
+                </div>
+            </div>
+            <table>
+                <thead>
+                    <tr>
+                        <th style="width:40px;"><input type="checkbox" id="select-all-checkbox" onchange="toggleSelectAll()"></th>
+                        <th>ID</th>
+                        <th>Имя</th>
+                        <th>Тег</th>
+                        <th>tg_id</th>
+                        <th>Роль</th>
+                        <th>Баланс</th>
+                        <th>Статус</th>
+                        <th>Подписка</th>
+                        <th>Реферальный код</th>
+                        <th>Регистрация</th>
+                    </tr>
+                </thead>
+                <tbody id="users-tbody">
+                    {% for user in users %}
+                <tr class="row-link" data-href="/admin/web/users/{{ user.tg_id }}" data-user-id="{{ user.tg_id }}">
+                        <td onclick="event.stopPropagation();"><input type="checkbox" class="user-checkbox" value="{{ user.tg_id }}" onchange="updateBulkActions()"></td>
+                        <td>{{ user.id }}</td>
+                        <td>{{ user.full_name }}</td>
+                        <td>{{ user.tag }}</td>
+                    <td class="tg-id">{{ user.tg_id }}</td>
+                        <td>
+                        {% set role_class = 'badge-user' %}
+                        {% if user.role == 'Главный админ' %}
+                            {% set role_class = 'badge-superadmin' %}
+                        {% elif user.role == 'Админ' %}
+                            {% set role_class = 'badge-admin' %}
+                        {% elif user.role == 'Модератор' %}
+                            {% set role_class = 'badge-moderator' %}
+                        {% endif %}
+                        <span class="badge {{ role_class }}">{{ user.role }}</span>
+                        </td>
+                    <td class="balance">{{ "%.2f"|format(user.balance) }} RUB</td>
+                        <td>
+                            <span class="badge {% if user.is_active %}badge-active{% else %}badge-inactive{% endif %}">
+                                {% if user.is_active %}✅ Активен{% else %}❌ Заблокирован{% endif %}
+                            </span>
+                        </td>
+                        <td>
+                            <span class="badge {% if user.has_active_subscription %}badge-active{% else %}badge-inactive{% endif %}">
+                                {% if user.has_active_subscription %}✅ Есть{% else %}❌ Нет{% endif %}
+                            </span>
+                        </td>
+                        <td><span class="code">{{ user.referral_code }}</span></td>
+                        <td>{{ user.created_at }} МСК</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    
+
+    <script>
+        // Простейшая CSRF-защита: добавляем заголовок ко всем POST формам
+        const csrfToken = "{{ csrf_token }}";
+        document.querySelectorAll('form[method="post"]').forEach((form) => {
+            // Пропускаем форму массовых операций, у неё свой обработчик
+            if (form.id === 'bulk-action-form') {
+                return;
+            }
+            form.addEventListener('submit', (e) => {
+                e.preventDefault();
+                const fd = new FormData(form);
+                fetch(form.action, {
+                    method: 'POST',
+                    body: fd,
+                    headers: { 'X-CSRF-Token': csrfToken }
+                }).then(() => window.location.reload());
+            });
+        });
+
+        // Кликабельные строки таблицы (переход в профиль)
+        document.querySelectorAll('tr.row-link').forEach((row) => {
+            const href = row.getAttribute('data-href');
+            if (!href) return;
+            row.style.cursor = 'pointer';
+            row.addEventListener('click', () => window.location = href);
+        });
+
+        // Не даём клику по инпутам/кнопкам в строке уводить на профиль
+        document.querySelectorAll('tr.row-link input, tr.row-link button, tr.row-link form').forEach((el) => {
+            el.addEventListener('click', (e) => e.stopPropagation());
+        });
+
+        // Система уведомлений
+        let notificationsData = { notifications: [], alerts: [], unread_count: 0 };
+        
+        function loadNotifications() {
+            fetch('/admin/web/api/notifications')
+                .then(res => res.json())
+                .then(data => {
+                    notificationsData = data;
+                    updateNotificationsUI();
+                })
+                .catch(err => console.error('Ошибка загрузки уведомлений:', err));
+        }
+        
+        function updateNotificationsUI() {
+            const badge = document.getElementById('notifications-badge');
+            if (notificationsData.unread_count > 0) {
+                badge.textContent = notificationsData.unread_count > 99 ? '99+' : notificationsData.unread_count;
+                badge.style.display = 'block';
+            } else {
+                badge.style.display = 'none';
+            }
+            
+            // Обновляем содержимое модального окна
+            const container = document.getElementById('notifications-container');
+            if (container) {
+                container.innerHTML = '';
+                
+                // Алерты
+                if (notificationsData.alerts && notificationsData.alerts.length > 0) {
+                    const alertsDiv = document.createElement('div');
+                    alertsDiv.style.marginBottom = '20px';
+                    notificationsData.alerts.forEach(alert => {
+                        const alertEl = document.createElement('div');
+                        alertEl.className = `alert-banner ${alert.type}`;
+                        alertEl.innerHTML = `
+                            <strong>${alert.title}</strong>
+                            <div>${alert.message}</div>
+                        `;
+                        alertsDiv.appendChild(alertEl);
+                    });
+                    container.appendChild(alertsDiv);
+                }
+                
+                // Уведомления
+                if (notificationsData.notifications && notificationsData.notifications.length > 0) {
+                    notificationsData.notifications.forEach(notif => {
+                        const notifEl = document.createElement('div');
+                        notifEl.className = `notification-item ${notif.severity}`;
+                        notifEl.innerHTML = `
+                            <div style="display:flex; justify-content:space-between; align-items:start;">
+                                <div>
+                                    <strong>${notif.title}</strong>
+                                    <div style="margin-top:4px; color:#666; font-size:0.9em;">${notif.message}</div>
+                                </div>
+                                ${notif.count ? `<span style="background:#667eea; color:white; padding:2px 8px; border-radius:10px; font-size:0.8em;">${notif.count}</span>` : ''}
+                            </div>
+                            ${notif.link ? `<a href="${notif.link}" style="display:inline-block; margin-top:8px; color:#667eea; text-decoration:none; font-size:0.9em;">Перейти →</a>` : ''}
+                        `;
+                        container.appendChild(notifEl);
+                    });
+                } else if (notificationsData.alerts.length === 0) {
+                    container.innerHTML = '<div style="text-align:center; color:#666; padding:20px;">Нет новых уведомлений</div>';
+                }
+            }
+        }
+        
+        function toggleNotifications() {
+            const overlay = document.getElementById('notifications-overlay');
+            if (overlay) {
+                overlay.classList.toggle('show');
+                if (overlay.classList.contains('show')) {
+                    loadNotifications();
+                }
+            }
+        }
+        
+        // Загружаем уведомления при загрузке страницы
+        loadNotifications();
+        
+        // Автообновление каждые 30 секунд
+        setInterval(loadNotifications, 30000);
+        
+        // Закрытие модального окна при клике вне его
+        document.addEventListener('click', (e) => {
+            const overlay = document.getElementById('notifications-overlay');
+            if (overlay && e.target === overlay) {
+                overlay.classList.remove('show');
+            }
+        });
+
+        // Агрессивное скрытие оверлея - выполняется многократно для надежности
+        function forceHideOverlay() {
+            const overlays = document.querySelectorAll('.loading-overlay');
+            overlays.forEach(overlay => {
+                overlay.classList.remove('show');
+                overlay.style.display = 'none';
+                overlay.style.opacity = '0';
+                overlay.style.pointerEvents = 'none';
+            });
+            document.body.classList.remove('loading');
+            document.body.style.overflow = '';
+            document.body.style.position = '';
+        }
+        
+        // Скрываем оверлей немедленно при загрузке скрипта
+        forceHideOverlay();
+        
+        // Повторяем скрытие через requestAnimationFrame
+        requestAnimationFrame(function() {
+            forceHideOverlay();
+            requestAnimationFrame(forceHideOverlay);
+        });
+        
+        // Автообновление таблицы пользователей
+        function getRoleClass(role) {
+            if (role === 'Главный админ') return 'badge-superadmin';
+            if (role === 'Админ') return 'badge-admin';
+            if (role === 'Модератор') return 'badge-moderator';
+            return 'badge-user';
+        }
+        
+        function loadUsersTable() {
+            const params = new URLSearchParams(window.location.search);
+            const url = `/admin/web/api/users?${params.toString()}`;
+            
+            // Не показываем оверлей при обновлении данных (это фоновое обновление)
+            // Оверлей уже должен быть скрыт после загрузки страницы
+            
+            fetch(url)
+                .then(res => res.json())
+                .then(data => {
+                    // Обновляем статистику
+                    const totalEl = document.getElementById('stat-total-value');
+                    const activeEl = document.getElementById('stat-active-value');
+                    const blockedEl = document.getElementById('stat-blocked-value');
+                    if (totalEl) totalEl.textContent = data.total_users;
+                    if (activeEl) activeEl.textContent = data.total_active;
+                    if (blockedEl) blockedEl.textContent = data.total_blocked;
+                    
+                    // Обновляем таблицу
+                    const tbody = document.getElementById('users-tbody');
+                    if (tbody) {
+                        tbody.innerHTML = data.users.map(user => {
+                            const roleClass = getRoleClass(user.role);
+                            return `
+                                <tr class="row-link" data-href="/admin/web/users/${user.tg_id}" data-user-id="${user.tg_id}">
+                                    <td onclick="event.stopPropagation();"><input type="checkbox" class="user-checkbox" value="${user.tg_id}" onchange="updateBulkActions()"></td>
+                                    <td>${user.id}</td>
+                                    <td>${user.full_name}</td>
+                                    <td>${user.tag}</td>
+                                    <td class="tg-id">${user.tg_id}</td>
+                                    <td>
+                                        <span class="badge ${roleClass}">${user.role}</span>
+                                    </td>
+                                    <td class="balance">${user.balance.toFixed(2)} RUB</td>
+                                    <td>
+                                        <span class="badge ${user.is_active ? 'badge-active' : 'badge-inactive'}">
+                                            ${user.is_active ? '✅ Активен' : '❌ Заблокирован'}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <span class="badge ${user.has_active_subscription ? 'badge-active' : 'badge-inactive'}">
+                                            ${user.has_active_subscription ? '✅ Есть' : '❌ Нет'}
+                                        </span>
+                                    </td>
+                                    <td><span class="code">${user.referral_code}</span></td>
+                                    <td>${user.created_at} МСК</td>
+                                </tr>
+                            `;
+                        }).join('');
+                        
+                        // Восстанавливаем обработчики кликов для строк
+                        document.querySelectorAll('tr.row-link').forEach((row) => {
+                            const href = row.getAttribute('data-href');
+                            if (!href) return;
+                            row.style.cursor = 'pointer';
+                            row.addEventListener('click', () => window.location = href);
+                        });
+                    }
+                    
+                    // Убеждаемся, что оверлей скрыт (на случай если он был показан)
+                    forceHideOverlay();
+                })
+                .catch(err => {
+                    console.error('Ошибка загрузки пользователей:', err);
+                    // Скрываем оверлей даже при ошибке
+                    forceHideOverlay();
+                });
+        }
+        
+        // Загружаем данные сразу при загрузке страницы
+        // Но не показываем оверлей, так как данные уже есть на странице
+        function initUsersTable() {
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', function() {
+                    // Небольшая задержка, чтобы оверлей успел скрыться
+                    setTimeout(loadUsersTable, 200);
+                });
+            } else {
+                // Страница уже загружена
+                setTimeout(loadUsersTable, 200);
+            }
+        }
+        
+        initUsersTable();
+        
+        // Автообновление каждые 15 секунд
+        setInterval(loadUsersTable, 15000);
+
+        // Массовые операции
+        function selectAllUsers() {
+            // Функция для кнопки "Выбрать все"
+            const checkbox = document.getElementById('select-all-checkbox');
+            const checkboxes = document.querySelectorAll('.user-checkbox');
+            
+            // Проверяем, все ли уже выбраны
+            const allChecked = checkboxes.length > 0 && Array.from(checkboxes).every(cb => cb.checked);
+            const isChecked = !allChecked; // Если все выбраны, снимаем выбор, иначе выбираем все
+            
+            // Устанавливаем состояние всех чекбоксов
+            checkboxes.forEach(cb => cb.checked = isChecked);
+            if (checkbox) {
+                checkbox.checked = isChecked;
+            }
+            updateBulkActions();
+            updateSelectButtons();
+        }
+        
+        function toggleSelectAll() {
+            // Функция для чекбокса в заголовке таблицы
+            const checkbox = document.getElementById('select-all-checkbox');
+            const checkboxes = document.querySelectorAll('.user-checkbox');
+            const isChecked = checkbox.checked;
+            
+            checkboxes.forEach(cb => cb.checked = isChecked);
+            updateBulkActions();
+            updateSelectButtons();
+        }
+        
+        function deselectAll() {
+            document.getElementById('select-all-checkbox').checked = false;
+            document.querySelectorAll('.user-checkbox').forEach(cb => cb.checked = false);
+            updateBulkActions();
+            updateSelectButtons();
+        }
+        
+        function updateSelectButtons() {
+            const selected = document.querySelectorAll('.user-checkbox:checked').length;
+            const selectAllBtn = document.getElementById('select-all-btn');
+            const deselectAllBtn = document.getElementById('deselect-all-btn');
+            if (selected > 0 && selectAllBtn && deselectAllBtn) {
+                selectAllBtn.style.display = 'none';
+                deselectAllBtn.style.display = 'inline-block';
+            } else if (selectAllBtn && deselectAllBtn) {
+                selectAllBtn.style.display = 'inline-block';
+                deselectAllBtn.style.display = 'none';
+            }
+        }
+        
+        function updateBulkActions() {
+            const selected = document.querySelectorAll('.user-checkbox:checked');
+            const bulkActions = document.getElementById('bulk-actions');
+            const selectedCount = document.getElementById('selected-count');
+            
+            if (selected.length > 0) {
+                if (bulkActions) {
+                    bulkActions.style.display = 'flex';
+                    bulkActions.style.flexDirection = 'row';
+                }
+                if (selectedCount) selectedCount.textContent = `Выбрано: ${selected.length}`;
+            } else {
+                if (bulkActions) {
+                    bulkActions.style.display = 'none';
+                }
+                if (selectedCount) selectedCount.textContent = '';
+            }
+            updateSelectButtons();
+        }
+        
+        function getSelectedUsers() {
+            const checkboxes = document.querySelectorAll('.user-checkbox:checked');
+            return Array.from(checkboxes).map(cb => parseInt(cb.value));
+        }
+        
+        function openBulkModal(action) {
+            const selected = getSelectedUsers();
+            if (selected.length === 0) {
+                alert('Выберите пользователей');
+                return;
+            }
+            
+            const modal = document.getElementById('bulk-action-modal');
+            const actionTitle = document.getElementById('bulk-action-title');
+            const actionForm = document.getElementById('bulk-action-form');
+            const actionInput = document.getElementById('bulk-action-type');
+            
+            if (!modal || !actionTitle || !actionForm || !actionInput) return;
+            
+            actionInput.value = action;
+            if (action === 'block') {
+                actionTitle.textContent = 'Массовая блокировка пользователей';
+                actionForm.innerHTML = `
+                    <input type="hidden" name="action" value="block">
+                    <input type="hidden" name="user_ids" value="${selected.join(',')}">
+                    <label style="display:block; margin-bottom:6px;">Причина блокировки (обязательно)</label>
+                    <input class="input" type="text" name="reason" placeholder="Причина" style="width:100%; margin-bottom:14px;" required>
+                    <div style="color:#666; font-size:0.9em; margin-bottom:14px;">Будет заблокировано: ${selected.length} пользователей</div>
+                    <div style="display:flex; gap:10px; justify-content:flex-end;">
+                        <button class="btn btn-muted" type="button" onclick="closeBulkModal()">Отмена</button>
+                        <button class="btn btn-danger" type="submit">Заблокировать</button>
+                    </div>
+                `;
+            } else if (action === 'unblock') {
+                actionTitle.textContent = 'Массовая разблокировка пользователей';
+                actionForm.innerHTML = `
+                    <input type="hidden" name="action" value="unblock">
+                    <input type="hidden" name="user_ids" value="${selected.join(',')}">
+                    <label style="display:block; margin-bottom:6px;">Причина разблокировки (обязательно)</label>
+                    <input class="input" type="text" name="reason" placeholder="Причина" style="width:100%; margin-bottom:14px;" required>
+                    <div style="color:#666; font-size:0.9em; margin-bottom:14px;">Будет разблокировано: ${selected.length} пользователей</div>
+                    <div style="display:flex; gap:10px; justify-content:flex-end;">
+                        <button class="btn btn-muted" type="button" onclick="closeBulkModal()">Отмена</button>
+                        <button class="btn btn-success" type="submit">Разблокировать</button>
+                    </div>
+                `;
+            } else if (action === 'credit') {
+                actionTitle.textContent = 'Массовое изменение баланса';
+                actionForm.innerHTML = `
+                    <input type="hidden" name="action" value="credit">
+                    <input type="hidden" name="user_ids" value="${selected.join(',')}">
+                    <label style="display:block; margin-bottom:6px;">Сумма (RUB)</label>
+                    <input class="input" type="number" step="0.01" name="amount" placeholder="+/- RUB" style="width:100%; margin-bottom:10px;" required>
+                    <label style="display:block; margin-bottom:6px;">Причина (обязательно)</label>
+                    <input class="input" type="text" name="reason" placeholder="Причина" style="width:100%; margin-bottom:14px;" required>
+                    <div style="color:#666; font-size:0.9em; margin-bottom:14px;">Баланс будет изменен у: ${selected.length} пользователей</div>
+                    <div style="display:flex; gap:10px; justify-content:flex-end;">
+                        <button class="btn btn-muted" type="button" onclick="closeBulkModal()">Отмена</button>
+                        <button class="btn btn-primary" type="submit">Применить</button>
+                    </div>
+                `;
+            }
+            
+            modal.classList.add('show');
+            document.body.classList.add('backdrop-blur');
+        }
+        
+        function closeBulkModal() {
+            const modal = document.getElementById('bulk-action-modal');
+            if (modal) {
+                modal.classList.remove('show');
+                document.body.classList.remove('backdrop-blur');
+            }
+        }
+        
+        // Обработка формы массовых операций
+        document.addEventListener('submit', (e) => {
+            if (e.target.id === 'bulk-action-form') {
+                e.preventDefault();
+                const formData = new FormData(e.target);
+                const action = formData.get('action');
+                const userIds = formData.get('user_ids').split(',').map(id => parseInt(id));
+                const reason = formData.get('reason');
+                
+                if (!reason || !reason.trim()) {
+                    alert('Нужно указать причину');
+                    return;
+                }
+                
+                let url = '';
+                let payload = {};
+                
+                if (action === 'block') {
+                    url = '/admin/web/users/bulk/block';
+                    payload = { user_ids: userIds, reason: reason };
+                } else if (action === 'unblock') {
+                    url = '/admin/web/users/bulk/unblock';
+                    payload = { user_ids: userIds, reason: reason };
+                } else if (action === 'credit') {
+                    url = '/admin/web/users/bulk/credit';
+                    const amount = parseFloat(formData.get('amount'));
+                    if (isNaN(amount)) {
+                        alert('Неверная сумма');
+                        return;
+                    }
+                    payload = { user_ids: userIds, amount: amount, reason: reason };
+                }
+                
+                fetch(url, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-Token': csrfToken
+                    },
+                    body: JSON.stringify(payload)
+                })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.success) {
+                        closeBulkModal();
+                        deselectAll();
+                        loadUsersTable();
+                        alert(`Операция выполнена успешно. Обработано: ${data.processed || userIds.length} пользователей`);
+                    } else {
+                        alert('Ошибка: ' + (data.error || 'Неизвестная ошибка'));
+                    }
+                })
+                .catch(err => {
+                    console.error('Ошибка:', err);
+                    alert('Ошибка при выполнении операции');
+                });
+            }
+        });
+
+    </script>
+    
+    <!-- Модальное окно массовых операций -->
+    <div class="overlay" id="bulk-action-modal">
+        <div class="modal">
+            <h3 id="bulk-action-title"></h3>
+            <form id="bulk-action-form">
+                <input type="hidden" id="bulk-action-type" name="action">
+            </form>
+        </div>
+    </div>
+    
+    <!-- Модальное окно уведомлений -->
+    <div class="notification-overlay" id="notifications-overlay">
+        <div class="notification-modal">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+                <h2 style="margin:0;">🔔 Уведомления</h2>
+                <button class="btn btn-muted" onclick="toggleNotifications()" style="padding:6px 12px;">✕ Закрыть</button>
+            </div>
+            <div id="notifications-container">
+                <div style="text-align:center; color:#666; padding:20px;">Загрузка...</div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Индикатор загрузки (показывается сразу при загрузке страницы) -->
+    <div class="loading-overlay show" id="loading-overlay">
+        <div style="text-align: center;">
+            <div class="loading-spinner"></div>
+            <div class="loading-text">Загрузка...</div>
+        </div>
+    </div>
+    
+    <script>
+        // Агрессивное скрытие оверлея - выполняется многократно для надежности
+        function forceHideOverlay() {
+            const overlays = document.querySelectorAll('.loading-overlay');
+            overlays.forEach(overlay => {
+                overlay.classList.remove('show');
+                overlay.style.display = 'none';
+                overlay.style.opacity = '0';
+                overlay.style.pointerEvents = 'none';
+            });
+            document.body.classList.remove('loading');
+            document.body.style.overflow = '';
+            document.body.style.position = '';
+        }
+        
+        // Скрываем индикатор загрузки после полной загрузки страницы
+        (function() {
+            // Скрываем оверлей немедленно, независимо от состояния страницы
+            // Данные уже есть на странице (серверный рендеринг)
+            forceHideOverlay();
+            
+            // Повторяем скрытие через requestAnimationFrame
+            requestAnimationFrame(function() {
+                forceHideOverlay();
+                requestAnimationFrame(forceHideOverlay);
+            });
+            
+            // Дополнительно скрываем после DOMContentLoaded
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', function() {
+                    forceHideOverlay();
+                    setTimeout(forceHideOverlay, 50);
+                    setTimeout(forceHideOverlay, 100);
+                });
+            } else {
+                setTimeout(forceHideOverlay, 50);
+                setTimeout(forceHideOverlay, 100);
+            }
+            
+            // Дополнительно скрываем после полной загрузки (на случай если что-то пошло не так)
+            window.addEventListener('load', function() {
+                forceHideOverlay();
+                setTimeout(forceHideOverlay, 50);
+            });
+            
+            // Обрабатываем навигацию назад/вперед (когда страница загружается из кэша)
+            window.addEventListener('pageshow', function(event) {
+                forceHideOverlay();
+                setTimeout(forceHideOverlay, 50);
+            });
+            
+            // Показываем индикатор загрузки при переходах и действиях
+            document.addEventListener('DOMContentLoaded', function() {
+                const links = document.querySelectorAll('a[href^="/admin/web"], a[href^="/admin/users"]');
+                
+                links.forEach(link => {
+                    link.addEventListener('click', function(e) {
+                        // Не показываем оверлей для ссылок на скачивание
+                        if (this.hasAttribute('download') || this.target === '_blank' || this.href.includes('/download')) {
+                            // Скрываем оверлей если он был показан
+                            if (loadingOverlay) {
+                                loadingOverlay.classList.remove('show');
+                                document.body.classList.remove('loading');
+                            }
+                            return;
+                        }
+                        if (loadingOverlay) {
+                            loadingOverlay.classList.add('show');
+                            document.body.classList.add('loading');
+                        }
+                    });
+                });
+                
+                // Обработка скачивания файлов - используем делегирование событий
+                document.addEventListener('click', function(e) {
+                    const target = e.target.closest('a[href*="/download"]');
+                    if (target) {
+                        // Сразу скрываем оверлей при клике на ссылку скачивания
+                        if (loadingOverlay) {
+                            loadingOverlay.classList.remove('show');
+                            document.body.classList.remove('loading');
+                        }
+                    }
+                });
+                
+                const forms = document.querySelectorAll('form');
+                forms.forEach(form => {
+                    form.addEventListener('submit', function() {
+                        if (loadingOverlay) {
+                            loadingOverlay.classList.add('show');
+                            document.body.classList.add('loading');
+                        }
+                    });
+                });
+            });
+        })();
+    </script>
+</body>
+</html>
+

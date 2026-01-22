@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Пользователь {{ user.tg_id }}</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container {
+            max-width: 960px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            overflow: hidden;
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+        }
+        .header h1 { font-size: 2em; margin-bottom: 6px; }
+        .header p { opacity: 0.9; }
+        .content { padding: 24px; display: grid; gap: 16px; }
+        .card {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 16px 18px;
+            border: 1px solid #eef1f5;
+        }
+        .title { font-weight: 700; color: #444; margin-bottom: 10px; }
+        .row { display: flex; justify-content: space-between; margin: 6px 0; color: #555; }
+        .badge { display: inline-block; padding: 4px 10px; border-radius: 12px; font-size: 0.9em; font-weight: 600; }
+        .badge-active { background: #d4edda; color: #155724; }
+        .badge-inactive { background: #f8d7da; color: #721c24; }
+        .badge-admin { background: #fff3cd; color: #856404; }
+        .badge-user { background: #d1ecf1; color: #0c5460; }
+        .code { font-family: 'Courier New', monospace; background: #eef1f5; padding: 3px 6px; border-radius: 6px; }
+        .actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+        .btn { border: none; padding: 8px 12px; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 0.9em; }
+        .btn-danger { background: #dc3545; color: white; }
+        .btn-success { background: #28a745; color: white; }
+        .btn-primary { background: #667eea; color: white; }
+        .input { padding: 8px 10px; border: 1px solid #e1e5ea; border-radius: 8px; font-size: 0.95em; }
+        .grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; }
+        .link { color: #667eea; text-decoration: none; }
+        .back { display: inline-block; margin-top: 16px; color: #667eea; text-decoration: none; font-weight: 600; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>👤 Пользователь {{ user.tg_id }}</h1>
+            <p>Детали профиля и действия</p>
+        </div>
+
+        <div class="content">
+            <div class="grid-2">
+                <div class="card">
+                    <div class="title">Профиль</div>
+                    <div class="row"><span>Имя</span><span>{{ user.full_name }}</span></div>
+                    <div class="row"><span>Тег</span><span>{{ user.tag }}</span></div>
+                    <div class="row"><span>tg_id</span><span class="code">{{ user.tg_id }}</span></div>
+                    <div class="row"><span>Роль</span>
+                        <span class="badge {% if user.role == 'Админ' %}badge-admin{% else %}badge-user{% endif %}">{{ user.role }}</span>
+                    </div>
+                    <div class="row"><span>Статус</span>
+                        <span class="badge {% if user.is_active %}badge-active{% else %}badge-inactive{% endif %}">
+                            {% if user.is_active %}Активен{% else %}Заблокирован{% endif %}
+                        </span>
+                    </div>
+                    <div class="row"><span>Регистрация</span><span>{{ user.created_at }} МСК</span></div>
+                </div>
+
+                <div class="card">
+                    <div class="title">Баланс</div>
+                    <div class="row"><span>Текущий</span><span><b>{{ "%.2f"|format(user.balance) }} RUB</b></span></div>
+                    <form class="actions" method="post" action="/admin/web/users/credit">
+                        <input type="hidden" name="tg_id" value="{{ user.tg_id }}">
+                        <input class="input" type="text" name="amount" placeholder="+ RUB" value="">
+                        <input class="input" style="width:160px" type="text" name="reason" placeholder="Причина (опц.)" value="">
+                        <button class="btn btn-primary" type="submit">➕ Начислить</button>
+                    </form>
+                </div>
+            </div>
+
+            <div class="grid-2">
+                <div class="card">
+                    <div class="title">Подписка</div>
+                    <div class="row"><span>Активная подписка</span>
+                        <span class="badge {% if user.has_active_subscription %}badge-active{% else %}badge-inactive{% endif %}">
+                            {% if user.has_active_subscription %}✅ Есть{% else %}❌ Нет{% endif %}
+                        </span>
+                    </div>
+                    {% if user.has_active_subscription and user.subscription_ends_at %}
+                        <div class="row"><span>Действует до</span><span>{{ user.subscription_ends_at }}</span></div>
+                    {% endif %}
+                    {% if sub %}
+                        <div class="row"><span>Тариф</span><span>{{ sub.plan }}</span></div>
+                        <div class="row"><span>Статус</span><span>{{ sub.status }}</span></div>
+                    {% else %}
+                        <div class="row"><span>Детали подписки</span><span>—</span></div>
+                    {% endif %}
+                </div>
+
+                <div class="card">
+                    <div class="title">Рефералы</div>
+                    <div class="row"><span>Код</span><span class="code">{{ user.referral_code }}</span></div>
+                    <div class="row"><span>Приглашён</span>
+                        <span>
+                            {% if user.referred_by_tg_id %}
+                                <a class="link" href="/admin/web/user/{{ user.referred_by_tg_id }}">{{ user.referred_by_tg_id }}</a>
+                            {% else %}—{% endif %}
+                        </span>
+                    </div>
+                    <div class="row"><span>Пригласил</span><span>{{ user.referrals_count }} чел.</span></div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="title">Действия</div>
+                <div class="actions">
+                    {% if user.is_active %}
+                    <form method="post" action="/admin/web/users/block" onsubmit="return confirm('Заблокировать пользователя {{ user.tg_id }}?');">
+                        <input type="hidden" name="tg_id" value="{{ user.tg_id }}">
+                        <button class="btn btn-danger" type="submit">🚫 Блок</button>
+                    </form>
+                    {% else %}
+                    <form method="post" action="/admin/web/users/unblock" onsubmit="return confirm('Разблокировать пользователя {{ user.tg_id }}?');">
+                        <input type="hidden" name="tg_id" value="{{ user.tg_id }}">
+                        <button class="btn btn-success" type="submit">✅ Разблок</button>
+                    </form>
+                    {% endif %}
+                    <a class="btn btn-primary" href="/admin/web/users">⬅ К списку</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // CSRF: добавляем заголовок ко всем POST формам (отправляем через fetch)
+        const csrfToken = "{{ csrf_token }}";
+        document.querySelectorAll('form[method="post"]').forEach((form) => {
+            form.addEventListener('submit', (e) => {
+                e.preventDefault();
+                const fd = new FormData(form);
+                fetch(form.action, {
+                    method: 'POST',
+                    body: fd,
+                    headers: { 'X-CSRF-Token': csrfToken }
+                }).then(() => window.location.reload());
+            });
+        });
+    </script>
+</body>
+</html>
+
