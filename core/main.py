@@ -621,7 +621,19 @@ app = FastAPI(title="fioreVPN Core API", version="0.1.0", lifespan=lifespan)
 limiter = None  # Временно отключен
 
 # Добавляем middleware для сессий
-app.add_middleware(SessionMiddleware, secret_key=secrets.token_urlsafe(32))
+# Используем SECRET_KEY из env, или BOT_TOKEN, или генерируем случайный
+import os
+secret_key = os.getenv("SECRET_KEY", "").strip()
+if not secret_key:
+    bot_token = os.getenv("BOT_TOKEN", "").strip()
+    if bot_token:
+        # Используем BOT_TOKEN как основу для secret_key
+        import hashlib
+        secret_key = hashlib.sha256(bot_token.encode()).digest()
+    else:
+        # Генерируем случайный ключ
+        secret_key = secrets.token_urlsafe(32)
+app.add_middleware(SessionMiddleware, secret_key=secret_key)
 
 # Инициализация шаблонов для веб-интерфейса
 import os
