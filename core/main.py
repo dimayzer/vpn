@@ -95,8 +95,12 @@ def _check_port_sync(host: str, port: int, timeout: int = 5) -> bool:
     try:
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.settimeout(timeout)
+        # Не используем SO_REUSEADDR для клиентских сокетов, это может вызывать проблемы
         result = sock.connect_ex((host, port))
         return result == 0
+    except socket.timeout:
+        logger.debug(f"Таймаут при проверке порта {host}:{port}")
+        return False
     except Exception as e:
         logger.debug(f"Ошибка при проверке порта {host}:{port}: {e}")
         return False
@@ -744,6 +748,9 @@ async def lifespan(app: FastAPI):
                                 )
                                 session.add(status)
                                 checked_count += 1
+                                
+                                # Небольшая задержка между проверками серверов для избежания перегрузки
+                                await asyncio.sleep(0.2)
                                 
                             except Exception as e:
                                 logging.error(f"Error checking server {server.id} ({server.name}): {e}")
