@@ -917,9 +917,10 @@ async def _update_user_subscription_status(user_id: int, session: AsyncSession) 
         user.subscription_ends_at = None
 
 
-async def _validate_promo_code(code: str, user_id: int, amount_cents: int, session: AsyncSession) -> tuple[bool, str, int]:
+async def _validate_promo_code(code: str, user_id: int, amount_cents: int, session: AsyncSession, check_percent_usage: bool = False) -> tuple[bool, str, int]:
     """
     Проверяет промокод и возвращает (is_valid, error_message, discount_cents)
+    check_percent_usage: если True, проверяет, не использовал ли пользователь уже промокод на скидку
     """
     promo = await session.scalar(select(PromoCode).where(PromoCode.code == code.upper().strip()))
     if not promo:
@@ -945,14 +946,25 @@ async def _validate_promo_code(code: str, user_id: int, amount_cents: int, sessi
     if existing_usage:
         return False, "Вы уже использовали этот промокод", 0
     
+    # Если это промокод на скидку (процент), проверяем, не использовал ли пользователь уже другой промокод на скидку
+    if check_percent_usage and promo.discount_percent:
+        other_percent_usage = await session.scalar(
+            select(PromoCodeUsage)
+            .join(PromoCode)
+            .where(PromoCode.discount_percent.isnot(None))
+            .where(PromoCodeUsage.user_id == user_id)
+            .where(PromoCodeUsage.promo_code_id != promo.id)
+        )
+        if other_percent_usage:
+            return False, "Вы уже использовали промокод на скидку. Нельзя применить несколько промокодов на скидку", 0
+    
     # Вычисляем скидку
     discount_cents = 0
     if promo.discount_percent:
         discount_cents = int(amount_cents * promo.discount_percent / 100)
     elif promo.discount_amount_cents:
         discount_cents = promo.discount_amount_cents
-        if discount_cents > amount_cents:
-            discount_cents = amount_cents  # Не больше суммы платежа
+        # Для фикс суммы не ограничиваем суммой платежа - это бонус на баланс
     
     return True, "", discount_cents
 
@@ -971,10 +983,28 @@ async def validate_promo_code(
         payload.code, user.id, payload.amount_cents, session
     )
     
+    # Получаем информацию о промокоде для определения типа
+    promo = None
+    promo_type = None
+    discount_percent = None
+    discount_amount_cents = None
+    if is_valid:
+        promo = await session.scalar(select(PromoCode).where(PromoCode.code == payload.code.upper().strip()))
+        if promo:
+            if promo.discount_percent:
+                promo_type = "percent"
+                discount_percent = promo.discount_percent
+            elif promo.discount_amount_cents:
+                promo_type = "fixed"
+                discount_amount_cents = promo.discount_amount_cents
+    
     return {
         "valid": is_valid,
         "error": error_msg if not is_valid else None,
         "discount_cents": discount_cents,
+        "promo_type": promo_type,
+        "discount_percent": discount_percent,
+        "discount_amount_cents": discount_amount_cents,
     }
 
 
@@ -982,24 +1012,47 @@ async def validate_promo_code(
 async def apply_promo_code(
     payload: PromoCodeApplyIn,
     session: AsyncSession = Depends(get_session),
+    admin_user: dict | None = Depends(_require_admin_or_web),
 ):
     """Применение промокода"""
     user = await session.scalar(select(User).where(User.tg_id == payload.tg_id))
     if not user:
         raise HTTPException(status_code=404, detail="user_not_found")
     
-    # Проверяем промокод
+    # Находим промокод
+    promo = await session.scalar(select(PromoCode).where(PromoCode.code == payload.code.upper().strip()))
+    if not promo:
+        return {"success": False, "error": "Промокод не найден"}
+    
+    # Проверяем промокод (для промокодов на скидку проверяем, не использовал ли уже другой промокод на скидку)
     is_valid, error_msg, discount_cents = await _validate_promo_code(
-        payload.code, user.id, payload.amount_cents, session
+        payload.code, user.id, payload.amount_cents, session, check_percent_usage=bool(promo.discount_percent)
     )
     
     if not is_valid:
         return {"success": False, "error": error_msg}
     
-    # Находим промокод
-    promo = await session.scalar(select(PromoCode).where(PromoCode.code == payload.code.upper().strip()))
-    if not promo:
-        return {"success": False, "error": "Промокод не найден"}
+    # Если это промокод на фикс сумму, начисляем баланс сразу
+    if promo.discount_amount_cents and not promo.discount_percent:
+        user.balance += promo.discount_amount_cents
+        session.add(
+            BalanceTransaction(
+                user_id=user.id,
+                admin_tg_id=None,
+                amount=promo.discount_amount_cents,
+                reason=f"Промокод {promo.code}",
+            )
+        )
+        # Логируем в админке
+        admin_tg_id = admin_user.get("tg_id") if admin_user else None
+        session.add(
+            AuditLog(
+                action=AuditLogAction.admin_action,
+                user_tg_id=user.tg_id,
+                admin_tg_id=admin_tg_id,
+                details=f"Применен промокод {promo.code} (фикс сумма: {promo.discount_amount_cents / 100:.2f} RUB). Баланс пополнен.",
+            )
+        )
     
     # Создаем запись об использовании
     usage = PromoCodeUsage(
@@ -1017,6 +1070,7 @@ async def apply_promo_code(
     return {
         "success": True,
         "discount_cents": discount_cents,
+        "promo_type": "fixed" if promo.discount_amount_cents and not promo.discount_percent else "percent" if promo.discount_percent else None,
     }
 
 
@@ -2333,11 +2387,47 @@ async def purchase_subscription(
     plan_name = plan_db.name
     price_cents = plan_db.price_cents
     
+    # Проверяем, есть ли активный промокод на скидку у пользователя
+    promo_discount_cents = 0
+    promo_code_used = None
+    if payload.promo_code:
+        # Проверяем промокод на скидку (процент)
+        is_valid, error_msg, discount_cents = await _validate_promo_code(
+            payload.promo_code, user.id, price_cents, session, check_percent_usage=True
+        )
+        if is_valid:
+            promo = await session.scalar(select(PromoCode).where(PromoCode.code == payload.promo_code.upper().strip()))
+            if promo and promo.discount_percent:
+                promo_discount_cents = discount_cents
+                # Применяем промокод
+                usage = PromoCodeUsage(
+                    promo_code_id=promo.id,
+                    user_id=user.id,
+                    discount_amount_cents=promo_discount_cents,
+                )
+                session.add(usage)
+                promo.used_count += 1
+                promo_code_used = promo.code
+                # Логируем в админке
+                session.add(
+                    AuditLog(
+                        action=AuditLogAction.admin_action,
+                        user_tg_id=user.tg_id,
+                        admin_tg_id=None,
+                        details=f"Применен промокод {promo.code} (скидка {promo.discount_percent}%) при покупке подписки. Скидка: {promo_discount_cents / 100:.2f} RUB.",
+                    )
+                )
+    
+    # Применяем скидку
+    final_price_cents = price_cents - promo_discount_cents
+    if final_price_cents < 0:
+        final_price_cents = 0
+    
     # Проверяем баланс
-    if user.balance < price_cents:
+    if user.balance < final_price_cents:
         raise HTTPException(
             status_code=400,
-            detail=f"insufficient_balance. Required: {price_cents / 100:.2f} RUB, Available: {user.balance / 100:.2f} RUB"
+            detail=f"insufficient_balance. Required: {final_price_cents / 100:.2f} RUB, Available: {user.balance / 100:.2f} RUB"
         )
     
     # Проверяем, есть ли активная подписка
@@ -2359,16 +2449,19 @@ async def purchase_subscription(
         starts_at = now
         ends_at = now + timedelta(days=payload.plan_months * 30)
     
-    # Списываем баланс
-    user.balance -= price_cents
+    # Списываем баланс (с учетом скидки)
+    user.balance -= final_price_cents
     
     # Создаем транзакцию баланса
+    reason = f"Покупка подписки: {plan_name}"
+    if promo_code_used:
+        reason += f" (промокод {promo_code_used}, скидка {promo_discount_cents / 100:.2f} RUB)"
     session.add(
         BalanceTransaction(
             user_id=user.id,
             admin_tg_id=None,
-            amount=-price_cents,  # Отрицательное значение = списание
-            reason=f"Покупка подписки: {plan_name}",
+            amount=-final_price_cents,  # Отрицательное значение = списание
+            reason=reason,
         )
     )
     
@@ -2376,14 +2469,14 @@ async def purchase_subscription(
     if active_sub and active_sub.status == SubscriptionStatus.active:
         # Продлеваем существующую
         active_sub.ends_at = ends_at
-        active_sub.price_cents = price_cents
+        active_sub.price_cents = final_price_cents  # Сохраняем финальную цену с учетом скидки
         subscription = active_sub
     else:
         # Создаем новую подписку
         subscription = Subscription(
             user_id=user.id,
             plan_name=plan_name,
-            price_cents=price_cents,
+            price_cents=final_price_cents,  # Сохраняем финальную цену с учетом скидки
             currency="RUB",
             status=SubscriptionStatus.active,
             starts_at=starts_at,
@@ -2392,12 +2485,16 @@ async def purchase_subscription(
         session.add(subscription)
     
     # Логируем покупку
+    log_details = f"Покупка подписки: {plan_name}. Цена: {final_price_cents / 100:.2f} RUB"
+    if promo_code_used:
+        log_details += f" (промокод {promo_code_used}, скидка {promo_discount_cents / 100:.2f} RUB)"
+    log_details += f". Действует до: {ends_at.strftime('%d.%m.%Y %H:%M')} (UTC)"
     session.add(
         AuditLog(
             action=AuditLogAction.subscription_created,
             user_tg_id=user.tg_id,
             admin_tg_id=None,
-            details=f"Покупка подписки: {plan_name}. Цена: {price_cents / 100:.2f} RUB. Действует до: {ends_at.strftime('%d.%m.%Y %H:%M')} (UTC)",
+            details=log_details,
         )
     )
     
@@ -2417,8 +2514,12 @@ async def purchase_subscription(
             notification_text = (
                 f"✅ <b>Подписка успешно активирована!</b>\n\n"
                 f"📦 Тариф: <b>{plan_name}</b>\n"
-                f"💰 Стоимость: {price_cents / 100:.2f} RUB\n"
-                f"📅 Действует до: {ends_str} МСК\n"
+                f"💰 Стоимость: {final_price_cents / 100:.2f} RUB"
+            )
+            if promo_code_used:
+                notification_text += f"\n🎟️ Промокод: {promo_code_used} (скидка {promo_discount_cents / 100:.2f} RUB)"
+            notification_text += (
+                f"\n📅 Действует до: {ends_str} МСК\n"
                 f"💵 Остаток баланса: {user.balance / 100:.2f} RUB"
             )
             asyncio.create_task(_send_user_notification(user.tg_id, notification_text))
@@ -2428,8 +2529,12 @@ async def purchase_subscription(
     return {
         "subscription_id": subscription.id,
         "plan_name": plan_name,
-        "price_cents": price_cents,
-        "price_rub": price_cents / 100,
+        "price_cents": final_price_cents,
+        "price_rub": final_price_cents / 100,
+        "original_price_cents": price_cents,
+        "original_price_rub": price_cents / 100,
+        "discount_cents": promo_discount_cents,
+        "promo_code": promo_code_used,
         "starts_at": starts_at.isoformat(),
         "ends_at": ends_at.isoformat(),
         "balance_remaining": user.balance / 100,

@@ -231,7 +231,7 @@
                                 {% if promo.discount_percent %}
                                     {{ promo.discount_percent }}%
                                 {% elif promo.discount_amount_cents %}
-                                    {{ (promo.discount_amount_cents / 100) | round(2) }} USD
+                                    {{ (promo.discount_amount_cents / 100) | round(2) }} RUB
                                 {% else %}
                                     —
                                 {% endif %}
@@ -310,7 +310,7 @@
                     <label for="discount_type">Тип скидки *</label>
                     <select id="discount_type" name="discount_type" required onchange="updateDiscountInput()">
                         <option value="percent">Процент (%)</option>
-                        <option value="amount">Фиксированная сумма (USD)</option>
+                        <option value="amount">Фиксированная сумма (RUB)</option>
                     </select>
                 </div>
                 
@@ -366,7 +366,7 @@
                     let html = `
                         <div style="margin-bottom:20px;">
                             <h3 style="margin-bottom:10px;">Код: <strong>${data.code}</strong></h3>
-                            <p><strong>Скидка:</strong> ${data.discount_percent ? data.discount_percent + '%' : (data.discount_amount_cents / 100).toFixed(2) + ' USD'}</p>
+                            <p><strong>Скидка:</strong> ${data.discount_percent ? data.discount_percent + '%' : (data.discount_amount_cents / 100).toFixed(2) + ' RUB'}</p>
                             <p><strong>Использований:</strong> ${data.used_count}${data.max_uses ? ' / ' + data.max_uses : ' / ∞'}</p>
                             <p><strong>Статус:</strong> <span class="badge ${data.is_active ? 'badge-success' : 'badge-danger'}">${data.is_active ? 'Активен' : 'Неактивен'}</span></p>
                             ${data.valid_from || data.valid_until ? `<p><strong>Действителен:</strong> ${data.valid_from || '—'} ${data.valid_until ? '— ' + data.valid_until : ''}</p>` : '<p><strong>Действителен:</strong> Всегда</p>'}
@@ -395,7 +395,7 @@
                             html += `
                                 <tr>
                                     <td>${usage.first_name || '—'} ${usage.username ? '(@' + usage.username + ')' : ''}<br><small>ID: ${usage.user_tg_id}</small></td>
-                                    <td>${usage.discount_amount.toFixed(2)} USD</td>
+                                    <td>${usage.discount_amount.toFixed(2)} RUB</td>
                                     <td>${usage.used_at}</td>
                                 </tr>
                             `;
@@ -432,7 +432,7 @@
                 input.step = '1';
                 input.max = '100';
             } else {
-                label.textContent = 'Сумма скидки (USD) *';
+                label.textContent = 'Сумма скидки (RUB) *';
                 input.placeholder = '5.00';
                 input.step = '0.01';
                 input.max = '';

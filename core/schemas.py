@@ -100,6 +100,7 @@ class SubscriptionPurchaseIn(BaseModel):
     """Покупка подписки"""
     tg_id: int
     plan_months: int  # 1, 3, 6, 12 месяцев
+    promo_code: str | None = None  # Промокод на скидку (процент)
 
 
 class SubscriptionTrialIn(BaseModel):

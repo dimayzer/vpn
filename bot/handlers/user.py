@@ -88,7 +88,7 @@ async def status(message: Message) -> None:
                     moscow_tz = ZoneInfo("Europe/Moscow")
                     dt_moscow = dt.astimezone(moscow_tz)
                     ends_str = dt_moscow.strftime("%d.%m.%Y %H:%M")
-                else:
+        else:
                     ends_str = "—"
             except:
                 ends_str = ends_at[:10] if len(ends_at) >= 10 else ends_at
@@ -436,8 +436,8 @@ async def promo_code_apply(message: Message, state: FSMContext) -> None:
             await state.clear()
             return
         
-        # Используем временную сумму для проверки промокода
-        temp_amount_cents = 10000  # 100 USD для проверки
+        # Используем временную сумму для проверки промокода (не важна для фикс суммы)
+        temp_amount_cents = 10000  # 100 RUB для проверки
         
         # Проверяем промокод
         validation_result = await api.validate_promo_code(code, tg_id, temp_amount_cents)
@@ -458,20 +458,18 @@ async def promo_code_apply(message: Message, state: FSMContext) -> None:
         
         if apply_result.get("success"):
             if promo_type == "fixed" and discount_amount_cents:
-                # Фиксированная сумма - начисляем на баланс
-                discount_usd = discount_amount_cents / 100
+                # Фиксированная сумма - начисляем на баланс (уже начислено в API)
+                discount_rub = discount_amount_cents / 100
                 
-                await api.admin_credit(
-                    tg_id,
-                    discount_amount_cents,
-                    f"Промокод {code}",
-                    tg_id
-                )
+                # Получаем обновленный баланс
+                user_data = await api.get_user_by_tg(tg_id)
+                balance_rub = (user_data.get("balance", 0) or 0) / 100
                 
                 await message.answer(
                     f"✅ <b>Промокод применен!</b>\n\n"
-                    f"Вы получили: <b>{discount_usd:.2f} USD</b>\n"
-                    f"Сумма добавлена на ваш баланс.",
+                    f"Вы получили: <b>{discount_rub:.2f} RUB</b>\n"
+                    f"Сумма добавлена на ваш баланс.\n"
+                    f"💵 Текущий баланс: <b>{balance_rub:.2f} RUB</b>",
                     parse_mode="HTML"
                 )
             elif promo_type == "percent" and discount_percent:

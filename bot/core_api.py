@@ -33,7 +33,7 @@ class CoreApi:
             r = await client.get(f"{self._base_url}/subscriptions/status/by_tg/{tg_id}")
             r.raise_for_status()
             return r.json()
-    
+
     async def get_subscription_plans(self) -> dict[str, Any]:
         """Получить список тарифов подписки"""
         async with httpx.AsyncClient(timeout=10.0) as client:
@@ -41,12 +41,15 @@ class CoreApi:
             r.raise_for_status()
             return r.json()
     
-    async def purchase_subscription(self, tg_id: int, plan_months: int) -> dict[str, Any]:
+    async def purchase_subscription(self, tg_id: int, plan_months: int, promo_code: str | None = None) -> dict[str, Any]:
         """Покупка подписки"""
         async with httpx.AsyncClient(timeout=10.0) as client:
+            payload = {"tg_id": tg_id, "plan_months": plan_months}
+            if promo_code:
+                payload["promo_code"] = promo_code
             r = await client.post(
                 f"{self._base_url}/subscriptions/purchase",
-                json={"tg_id": tg_id, "plan_months": plan_months}
+                json=payload
             )
             r.raise_for_status()
             return r.json()
@@ -221,7 +224,7 @@ class CoreApi:
             )
             r.raise_for_status()
             return r.json()
-    
+
     async def get_promo_code_info(self, code: str) -> dict[str, Any]:
         async with httpx.AsyncClient(timeout=10.0) as client:
             r = await client.get(f"{self._base_url}/promo-codes/info/{code}")
