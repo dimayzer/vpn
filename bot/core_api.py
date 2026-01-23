@@ -11,7 +11,12 @@ class CoreApi:
         self._admin_token = admin_token or ""
 
     def _admin_headers(self) -> dict[str, str]:
-        return {"X-Admin-Token": self._admin_token} if self._admin_token else {}
+        if self._admin_token:
+            return {"X-Admin-Token": self._admin_token}
+        # Если токен не установлен, возвращаем пустой словарь (но это вызовет ошибку на сервере)
+        import logging
+        logging.warning("Admin token not set in CoreApi, requests may fail")
+        return {}
 
     async def upsert_user(self, tg_id: int, username: str | None = None, first_name: str | None = None, last_name: str | None = None, referral_code: str | None = None) -> dict[str, Any]:
         async with httpx.AsyncClient(timeout=10.0) as client:

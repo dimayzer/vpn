@@ -441,7 +441,7 @@ def register(dp: Dispatcher, admin_ids: set[int]) -> None:
         tg_id = int(text)
         await state.update_data(credit_tg_id=tg_id)
         await state.set_state(AdminUsers.credit_waiting_amount)
-        await message.answer("Пришли сумму в USD (например: 10.50 или 10):", reply_markup=admin_users_menu())
+        await message.answer("Пришли сумму в RUB (например: 100.50 или 100):", reply_markup=admin_users_menu())
 
     @router.message(AdminUsers.credit_waiting_amount)
     async def credit_balance_amount(message: Message, state: FSMContext) -> None:
@@ -457,11 +457,12 @@ def register(dp: Dispatcher, admin_ids: set[int]) -> None:
             tg_id = int(data.get("credit_tg_id", 0))
             admin_tg_id = message.from_user.id if message.from_user else None
             api = CoreApi(str(settings.core_api_base), admin_token=settings.admin_token or "")
-            result = await api.admin_credit(tg_id, int(amount * 100), f"Выдано админом {admin_tg_id}", admin_tg_id)
+            # amount уже в рублях, передаем как есть (API сам конвертирует в копейки)
+            result = await api.admin_credit(tg_id, int(amount), f"Выдано админом {admin_tg_id}", admin_tg_id)
             new_balance = result.get("balance", 0) / 100  # API возвращает balance в копейках
             # Обновляем данные пользователя и показываем обновленную карточку
             updated_user = await api.get_user_by_tg(tg_id)
-            await message.answer(f"✅ Баланс выдан!\nНовый баланс: {new_balance:.2f} USD\n\n{format_user_card(updated_user, admin_ids=admin_ids)}", reply_markup=admin_users_menu(), parse_mode="HTML")
+            await message.answer(f"✅ Баланс выдан!\nНовый баланс: {new_balance:.2f} RUB\n\n{format_user_card(updated_user, admin_ids=admin_ids)}", reply_markup=admin_users_menu(), parse_mode="HTML")
             await state.set_state(AdminUsers.browsing)
             await state.update_data(credit_tg_id=None)
         except ValueError:
@@ -557,7 +558,7 @@ def register(dp: Dispatcher, admin_ids: set[int]) -> None:
             return
         await state.update_data(credit_tg_id=tg_id)
         await state.set_state(AdminUsers.credit_waiting_amount)
-        await message.answer("Пришли сумму в USD (например: 10.50 или 10):", reply_markup=admin_manage_user_menu())
+        await message.answer("Пришли сумму в RUB (например: 100.50 или 100):", reply_markup=admin_manage_user_menu())
 
     @router.message(AdminUsers.managing, F.text == BTN_BACK)
     async def manage_user_back(message: Message, state: FSMContext) -> None:

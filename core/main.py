@@ -2842,7 +2842,7 @@ async def admin_credit_user(
     else:
         notification_text = (
             f"💰 <b>Изменение баланса</b>\n\n"
-            f"Сумма: <b>{amount_usd:.2f} USD</b>\n"
+            f"Сумма: <b>{amount_rub:.2f} RUB</b>\n"
             f"Текущий баланс: <b>{user.balance / 100:.2f} RUB</b>"
         )
         if payload.reason:
@@ -5813,13 +5813,22 @@ async def admin_web_update_settings(
         for key, value in form_data.items():
             if key == "csrf_token":
                 continue
+            
+            # Нормализация ключей настроек
+            if key == "trial_days":
+                key = "trial_period_days"
+            elif key == "auto_extend_subscription":
+                key = "auto_renew_subscription"
+            
             # Специальная обработка для сумм в RUB - конвертируем в копейки
+            # В форме используются ключи с _cents, но значения вводятся в RUB
             if key in ["referral_reward_referrer_cents", "referral_reward_referred_cents", "min_topup_amount_cents", "max_topup_amount_cents"]:
                 try:
                     amount_rub = float(value)
                     value = str(int(amount_rub * 100))
                 except (ValueError, TypeError):
                     pass
+            
             # Для max_topup_amount_cents - если пусто, удаляем настройку
             if key == "max_topup_amount_cents" and (not value or value.strip() == ""):
                 setting = await session.scalar(select(SystemSetting).where(SystemSetting.key == key))
@@ -5827,15 +5836,19 @@ async def admin_web_update_settings(
                     await session.delete(setting)
                 continue
             
+            # Пропускаем пустые значения для текстовых полей
+            if not value or (isinstance(value, str) and not value.strip()):
+                continue
+            
             setting = await session.scalar(select(SystemSetting).where(SystemSetting.key == key))
             if setting:
-                setting.value = value
+                setting.value = str(value)
                 setting.updated_by_tg_id = actor_tg
                 setting.updated_at = datetime.utcnow()
             else:
                 setting = SystemSetting(
                     key=key,
-                    value=value,
+                    value=str(value),
                     updated_by_tg_id=actor_tg,
                     updated_at=datetime.utcnow(),
                 )
