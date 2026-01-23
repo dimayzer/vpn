@@ -6788,6 +6788,7 @@ async def admin_web_restore_backup(
 
 async def _generate_vpn_configs_for_user(user_id: int, session: AsyncSession, expires_at: datetime):
     """Генерирует VPN конфиги для пользователя на всех активных серверах"""
+    import json
     # Получаем все активные серверы
     servers = await session.scalars(
         select(Server)
@@ -6846,6 +6847,22 @@ async def _generate_vpn_configs_for_user(user_id: int, session: AsyncSession, ex
                 if client_data:
                     # Получаем UUID созданного клиента
                     user_uuid = client_data.get("id") or client_data.get("uuid")
+                    
+                    if not user_uuid:
+                        logger.error(f"Не удалось получить UUID для клиента {client_email} из ответа API 3x-UI")
+                        # Пробуем получить UUID из Inbound напрямую
+                        inbound = await x3ui.get_inbound(server.x3ui_inbound_id)
+                        if inbound:
+                            settings = json.loads(inbound.get("settings", "{}"))
+                            clients = settings.get("clients", [])
+                            for client in clients:
+                                if client.get("email") == client_email:
+                                    user_uuid = client.get("id")
+                                    break
+                    
+                    if not user_uuid:
+                        logger.error(f"UUID не найден для клиента {client_email}, пропускаем сервер")
+                        continue
                     
                     # Получаем конфиг через API (параметры берутся из Inbound автоматически)
                     config_text = await x3ui.get_client_config(
@@ -6987,10 +7004,13 @@ async def admin_api_servers(
             "x3ui_inbound_id": server.x3ui_inbound_id,
         }
         if last_status:
+            # Добавляем 3 часа для московского времени (UTC+3)
+            from datetime import timedelta
+            checked_at_msk = last_status.checked_at + timedelta(hours=3) if last_status.checked_at else None
             server_dict["status"] = {
                 "is_online": last_status.is_online,
                 "response_time_ms": last_status.response_time_ms,
-                "checked_at": last_status.checked_at.isoformat(),
+                "checked_at": checked_at_msk.isoformat() if checked_at_msk else None,
             }
         servers_list.append(server_dict)
     
@@ -7171,6 +7191,10 @@ async def admin_api_check_server(
     session.add(status)
     await session.commit()
     
+    # Добавляем 3 часа для московского времени (UTC+3)
+    from datetime import timedelta
+    checked_at_msk = status.checked_at + timedelta(hours=3) if status.checked_at else None
+    
     return {
         "server_id": server.id,
         "server_name": server.name,
@@ -7178,7 +7202,7 @@ async def admin_api_check_server(
             "is_online": status_result["is_online"],
             "response_time_ms": status_result["response_time_ms"],
             "error_message": status_result["error_message"],
-            "checked_at": status.checked_at.isoformat(),
+            "checked_at": checked_at_msk.isoformat() if checked_at_msk else None,
         }
     }
 

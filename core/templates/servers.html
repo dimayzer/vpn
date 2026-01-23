@@ -61,6 +61,16 @@
             border: 1px solid rgba(255, 255, 255, 0.3);
         }
         .btn-primary:hover { background: rgba(255, 255, 255, 0.3); }
+        /* Кнопки в контенте (не в header) */
+        .content .btn-primary {
+            background: #667eea;
+            color: white;
+            border: none;
+        }
+        .content .btn-primary:hover {
+            background: #5568d3;
+        }
+        /* Кнопки в модальном окне */
         .modal-content .btn-primary {
             background: #667eea;
             color: white;
@@ -138,10 +148,36 @@
             padding: 6px 12px;
             font-size: 0.85em;
         }
-        .btn-edit { background: #667eea; color: white; }
-        .btn-delete { background: #dc3545; color: white; }
-        .btn-toggle { background: #28a745; color: white; }
-        .btn-toggle.disabled { background: #6c757d; }
+        .btn-edit { 
+            background: #667eea; 
+            color: white; 
+            border: none;
+        }
+        .btn-edit:hover { 
+            background: #5568d3; 
+        }
+        .btn-delete { 
+            background: #dc3545; 
+            color: white; 
+            border: none;
+        }
+        .btn-delete:hover { 
+            background: #c82333; 
+        }
+        .btn-toggle { 
+            background: #28a745; 
+            color: white; 
+            border: none;
+        }
+        .btn-toggle:hover { 
+            background: #218838; 
+        }
+        .btn-toggle.disabled { 
+            background: #6c757d; 
+        }
+        .btn-toggle.disabled:hover { 
+            background: #5a6268; 
+        }
         .modal {
             display: none;
             position: fixed;
@@ -273,7 +309,22 @@
                             {% if status and status.checked_at %}
                             <div class="info-row" style="margin-top: 10px; font-size: 0.8em; color: #999;">
                                 <span>Последняя проверка:</span>
-                                <span id="last-check-{{ server.id }}">{{ status.checked_at.strftime('%H:%M:%S') if status.checked_at else '—' }}</span>
+                                <span id="last-check-{{ server.id }}" data-checked-at="{{ status.checked_at.isoformat() if status.checked_at else '' }}">
+                                    {% if status.checked_at %}
+                                        <script>
+                                            (function() {
+                                                const el = document.getElementById('last-check-{{ server.id }}');
+                                                if (el) {
+                                                    const date = new Date('{{ status.checked_at.isoformat() }}');
+                                                    date.setHours(date.getHours() + 3); // MSK = UTC+3
+                                                    el.textContent = date.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                                                }
+                                            })();
+                                        </script>
+                                    {% else %}
+                                        —
+                                    {% endif %}
+                                </span>
                             </div>
                             {% endif %}
                             <div class="server-actions">
@@ -395,30 +446,44 @@
         
         function openEditModal(serverId) {
             fetch(`/admin/web/api/servers`)
-                .then(r => r.json())
-                .then(data => {
-                    const server = data.servers.find(s => s.id === serverId);
-                    if (server) {
-                        document.getElementById('modalTitle').textContent = 'Редактировать сервер';
-                        document.getElementById('serverId').value = server.id;
-                        document.getElementById('name').value = server.name;
-                        document.getElementById('host').value = server.host;
-                        document.getElementById('location').value = server.location || '';
-                        document.getElementById('xray_port').value = server.xray_port || 443;
-                        document.getElementById('xray_uuid').value = server.xray_uuid || '';
-                        document.getElementById('xray_network').value = server.xray_network || 'tcp';
-                        document.getElementById('xray_security').value = server.xray_security || 'tls';
-                        document.getElementById('xray_sni').value = server.xray_sni || '';
-                        document.getElementById('xray_reality_public_key').value = server.xray_reality_public_key || '';
-                        document.getElementById('xray_reality_short_id').value = server.xray_reality_short_id || '';
-                        document.getElementById('xray_path').value = server.xray_path || '';
-                        document.getElementById('xray_host').value = server.xray_host || '';
-                        document.getElementById('x3ui_api_url').value = server.x3ui_api_url || '';
-                        document.getElementById('x3ui_username').value = server.x3ui_username || '';
-                        document.getElementById('x3ui_password').value = server.x3ui_password || '';
-                        document.getElementById('x3ui_inbound_id').value = server.x3ui_inbound_id || '';
-                        document.getElementById('serverModal').style.display = 'block';
+                .then(r => {
+                    if (!r.ok) {
+                        throw new Error(`HTTP error! status: ${r.status}`);
                     }
+                    return r.json();
+                })
+                .then(data => {
+                    if (!data || !data.servers) {
+                        throw new Error('Неверный формат ответа от сервера');
+                    }
+                    const server = data.servers.find(s => s.id === serverId);
+                    if (!server) {
+                        alert('Сервер не найден');
+                        return;
+                    }
+                    document.getElementById('modalTitle').textContent = 'Редактировать сервер';
+                    document.getElementById('serverId').value = server.id;
+                    document.getElementById('name').value = server.name || '';
+                    document.getElementById('host').value = server.host || '';
+                    document.getElementById('location').value = server.location || '';
+                    document.getElementById('xray_port').value = server.xray_port || 443;
+                    document.getElementById('xray_uuid').value = server.xray_uuid || '';
+                    document.getElementById('xray_network').value = server.xray_network || 'tcp';
+                    document.getElementById('xray_security').value = server.xray_security || 'tls';
+                    document.getElementById('xray_sni').value = server.xray_sni || '';
+                    document.getElementById('xray_reality_public_key').value = server.xray_reality_public_key || '';
+                    document.getElementById('xray_reality_short_id').value = server.xray_reality_short_id || '';
+                    document.getElementById('xray_path').value = server.xray_path || '';
+                    document.getElementById('xray_host').value = server.xray_host || '';
+                    document.getElementById('x3ui_api_url').value = server.x3ui_api_url || '';
+                    document.getElementById('x3ui_username').value = server.x3ui_username || '';
+                    document.getElementById('x3ui_password').value = server.x3ui_password || '';
+                    document.getElementById('x3ui_inbound_id').value = server.x3ui_inbound_id || '';
+                    document.getElementById('serverModal').style.display = 'block';
+                })
+                .catch(err => {
+                    console.error('Ошибка при загрузке данных сервера:', err);
+                    alert('Ошибка при загрузке данных сервера: ' + err.message);
                 });
         }
         
@@ -452,13 +517,27 @@
         }
         
         function toggleServer(id, enabled) {
+            // enabled приходит как строка 'true' или 'false'
+            const isEnabled = enabled === 'true' || enabled === true;
+            
             fetch(`/admin/web/api/servers/${id}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ is_enabled: enabled === 'true' })
+                body: JSON.stringify({ is_enabled: isEnabled })
             })
-            .then(() => location.reload())
-            .catch(err => alert('Ошибка: ' + err.message));
+            .then(r => {
+                if (!r.ok) {
+                    throw new Error(`HTTP error! status: ${r.status}`);
+                }
+                return r.json();
+            })
+            .then(() => {
+                location.reload();
+            })
+            .catch(err => {
+                console.error('Ошибка при переключении сервера:', err);
+                alert('Ошибка при переключении сервера: ' + err.message);
+            });
         }
         
         function deleteServer(id) {
@@ -518,7 +597,9 @@
                             const lastCheckEl = document.getElementById(`last-check-${server.id}`);
                             if (lastCheckEl && server.status.checked_at) {
                                 const date = new Date(server.status.checked_at);
-                                lastCheckEl.textContent = date.toLocaleTimeString('ru-RU');
+                                // Добавляем 3 часа для московского времени (UTC+3)
+                                date.setHours(date.getHours() + 3);
+                                lastCheckEl.textContent = date.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
                             }
                         }
                     });

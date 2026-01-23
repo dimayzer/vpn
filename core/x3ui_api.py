@@ -199,7 +199,13 @@ class X3UIAPI:
                         if response.status_code == 200:
                             result = response.json()
                             if result.get("success"):
-                                return new_client
+                                # Возвращаем клиента с UUID
+                                return {
+                                    "id": uuid,
+                                    "uuid": uuid,
+                                    "email": email,
+                                    **new_client
+                                }
                     except Exception as e:
                         logger.debug(f"Ошибка при вызове {endpoint}: {e}")
                         continue
@@ -233,7 +239,13 @@ class X3UIAPI:
                         if response.status_code == 200:
                             result = response.json()
                             if result.get("success"):
-                                return new_client
+                                # Возвращаем клиента с UUID
+                                return {
+                                    "id": uuid,
+                                    "uuid": uuid,
+                                    "email": email,
+                                    **new_client
+                                }
                     except Exception as e:
                         logger.debug(f"Ошибка при вызове {endpoint}: {e}")
                         continue
