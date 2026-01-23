@@ -711,11 +711,23 @@ def _require_admin(x_admin_token: str | None = Header(default=None)) -> None:
 
 def _require_admin_or_web(request: Request, x_admin_token: str | None = Header(default=None, alias="X-Admin-Token")) -> dict:
     """Проверка авторизации через токен (для бота) или веб-сессию (для админки)"""
-    # Сначала проверяем токен (для бота)
-    if x_admin_token and settings.admin_token and x_admin_token == settings.admin_token:
+    # Если токен передан в заголовке
+    if x_admin_token:
+        # Если токен настроен в settings, проверяем его
+        if settings.admin_token:
+            if x_admin_token == settings.admin_token:
+                return {"tg_id": None, "username": "bot", "first_name": "Bot"}
+            # Токен передан, но неверный
+            raise HTTPException(status_code=403, detail="invalid_admin_token")
+        # Токен передан, но не настроен в settings - разрешаем (для обратной совместимости)
         return {"tg_id": None, "username": "bot", "first_name": "Bot"}
     
-    # Если токена нет или не совпадает, проверяем веб-сессию
+    # Если токен не настроен в settings - разрешаем доступ без проверки (для обратной совместимости)
+    # Это позволяет работать без токена, если он не настроен
+    if not settings.admin_token:
+        return {"tg_id": None, "username": "bot", "first_name": "Bot"}
+    
+    # Если токен настроен, но не передан - проверяем веб-сессию
     return _require_web_admin(request)
 
 
