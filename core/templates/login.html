@@ -19,55 +19,210 @@
             align-items: center;
             justify-content: center;
             padding: 20px;
+            overflow: hidden;
+            position: relative;
+        }
+        
+        /* Анимированный фон */
+        body::before {
+            content: '';
+            position: absolute;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(circle, rgba(255,255,255,0.1) 1px, transparent 1px);
+            background-size: 50px 50px;
+            animation: moveBackground 20s linear infinite;
+            top: -50%;
+            left: -50%;
+        }
+        
+        @keyframes moveBackground {
+            0% { transform: translate(0, 0); }
+            100% { transform: translate(50px, 50px); }
         }
         
         .login-container {
-            background: white;
-            border-radius: 12px;
-            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
-            padding: 40px;
-            max-width: 400px;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 30px;
+            box-shadow: 0 30px 80px rgba(0,0,0,0.3);
+            padding: 60px 50px;
+            max-width: 450px;
             width: 100%;
             text-align: center;
+            position: relative;
+            z-index: 1;
+            animation: fadeInUp 0.8s ease-out;
+        }
+        
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
         }
         
         .login-container h1 {
             color: #667eea;
             margin-bottom: 10px;
-            font-size: 1.8em;
+            font-size: 2.2em;
+            font-weight: 700;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            animation: fadeIn 1s ease-out 0.3s both;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
         }
         
         .login-container p {
             color: #666;
-            margin-bottom: 30px;
+            margin-bottom: 40px;
+            font-size: 16px;
+            line-height: 1.6;
+            animation: fadeIn 1s ease-out 0.5s both;
         }
         
         .telegram-widget {
-            margin: 20px 0;
+            margin: 30px 0;
+            animation: fadeIn 1s ease-out 0.7s both;
         }
         
         .info {
-            margin-top: 20px;
-            padding: 15px;
-            background: #f8f9fa;
-            border-radius: 8px;
-            color: #666;
-            font-size: 0.9em;
+            margin-top: 30px;
+            padding: 20px;
+            background: rgba(102, 126, 234, 0.1);
+            border-radius: 15px;
+            color: #555;
+            font-size: 14px;
+            line-height: 1.6;
+            animation: fadeIn 1s ease-out 0.9s both;
+        }
+        
+        .info strong {
+            color: #667eea;
+            font-weight: 600;
+        }
+        
+        .particles {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            top: 0;
+            left: 0;
+            overflow: hidden;
+            z-index: 0;
+        }
+        
+        .particle {
+            position: absolute;
+            width: 4px;
+            height: 4px;
+            background: rgba(255, 255, 255, 0.5);
+            border-radius: 50%;
+            animation: floatParticle 15s infinite;
+        }
+        
+        .particle:nth-child(1) { left: 10%; animation-delay: 0s; }
+        .particle:nth-child(2) { left: 20%; animation-delay: 2s; }
+        .particle:nth-child(3) { left: 30%; animation-delay: 4s; }
+        .particle:nth-child(4) { left: 40%; animation-delay: 6s; }
+        .particle:nth-child(5) { left: 50%; animation-delay: 8s; }
+        .particle:nth-child(6) { left: 60%; animation-delay: 10s; }
+        .particle:nth-child(7) { left: 70%; animation-delay: 12s; }
+        .particle:nth-child(8) { left: 80%; animation-delay: 14s; }
+        
+        @keyframes floatParticle {
+            0% {
+                transform: translateY(100vh) scale(0);
+                opacity: 0;
+            }
+            10% {
+                opacity: 1;
+            }
+            90% {
+                opacity: 1;
+            }
+            100% {
+                transform: translateY(-100px) scale(1);
+                opacity: 0;
+            }
+        }
+        
+        @media (max-width: 600px) {
+            .login-container {
+                padding: 40px 30px;
+            }
+            
+            .login-container h1 {
+                font-size: 1.8em;
+            }
         }
     </style>
+    <script>
+        // Telegram Login сохраняет сессию; force_reauth=1 заставит подтвердить снова
+        if (new URLSearchParams(window.location.search).get('force_reauth') === '1') {
+            sessionStorage.clear();
+            localStorage.clear();
+        }
+        
+        function onTelegramAuth(user) {
+            // Отправляем данные на сервер для проверки и создания сессии
+            fetch('/admin/login', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(user)
+            })
+            .then(response => {
+                if (response.redirected) {
+                    window.location.href = response.url;
+                } else if (response.ok) {
+                    return response.json();
+                } else {
+                    throw new Error('Ошибка авторизации');
+                }
+            })
+            .then(data => {
+                if (data.redirect) {
+                    window.location.href = data.redirect;
+                }
+            })
+            .catch(error => {
+                console.error('Ошибка:', error);
+                alert('Ошибка авторизации. Попробуйте еще раз.');
+            });
+        }
+    </script>
 </head>
 <body>
+    <div class="particles">
+        <div class="particle"></div>
+        <div class="particle"></div>
+        <div class="particle"></div>
+        <div class="particle"></div>
+        <div class="particle"></div>
+        <div class="particle"></div>
+        <div class="particle"></div>
+        <div class="particle"></div>
+    </div>
+    
     <div class="login-container">
-        <h1>🛠 Админ-панель</h1>
-        <p>Войдите через Telegram</p>
-        
-        <div id="telegram-widget"></div>
-        
+        <h1>🔐 Вход в админ-панель</h1>
+        <p>Войдите через Telegram для доступа к админ-панели</p>
+        <div id="telegram-widget" class="telegram-widget"></div>
         <div class="info" id="info-box">
-            ⚠️ Доступ только для администраторов<br>
-            Если нужно зайти под другим аккаунтом Telegram:<br>
-            • открой эту страницу в режиме инкогнито или другом браузере;<br>
-            • либо очисти cookies для telegram.org и обнови страницу.
+            <strong>💡 Подсказка:</strong><br>
+            Используйте Telegram Login Widget для входа. Убедитесь, что ваш аккаунт добавлен в список администраторов.
         </div>
     </div>
     
@@ -90,7 +245,7 @@
             widget.src = 'https://telegram.org/js/telegram-widget.js?22';
             widget.setAttribute('data-telegram-login', cleanUsername);
             widget.setAttribute('data-size', 'large');
-            widget.setAttribute('data-request-access', 'write'); // просим подтверждать доступ
+            widget.setAttribute('data-request-access', 'write');
             widget.setAttribute('data-auth-url', window.location.origin + '/admin/auth/telegram');
             document.getElementById('telegram-widget').appendChild(widget);
         }
@@ -118,7 +273,7 @@
                 };
                 const infoBox = document.getElementById('info-box');
                 if (infoBox) {
-                    infoBox.innerHTML = '<p style="color: #dc3545;">' + (errorMessages[error] || 'Ошибка авторизации') + '</p>';
+                    infoBox.innerHTML = '<p style="color: #dc3545; margin: 0;">' + (errorMessages[error] || 'Ошибка авторизации') + '</p>';
                 }
             }
 
@@ -127,4 +282,3 @@
     </script>
 </body>
 </html>
-

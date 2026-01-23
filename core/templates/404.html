@@ -127,54 +127,6 @@
             animation: fadeIn 1s ease-out 0.5s both;
         }
         
-        .illustration {
-            width: 200px;
-            height: 200px;
-            margin: 40px auto;
-            position: relative;
-            animation: fadeIn 1s ease-out 0.7s both;
-        }
-        
-        .circle {
-            position: absolute;
-            border-radius: 50%;
-            border: 3px solid #667eea;
-            animation: rotate 10s linear infinite;
-        }
-        
-        .circle:nth-child(1) {
-            width: 200px;
-            height: 200px;
-            top: 0;
-            left: 0;
-            border-color: #667eea;
-            animation-duration: 15s;
-        }
-        
-        .circle:nth-child(2) {
-            width: 150px;
-            height: 150px;
-            top: 25px;
-            left: 25px;
-            border-color: #764ba2;
-            animation-duration: 12s;
-            animation-direction: reverse;
-        }
-        
-        .circle:nth-child(3) {
-            width: 100px;
-            height: 100px;
-            top: 50px;
-            left: 50px;
-            border-color: #667eea;
-            animation-duration: 8s;
-        }
-        
-        @keyframes rotate {
-            from { transform: rotate(0deg); }
-            to { transform: rotate(360deg); }
-        }
-        
         .home-link {
             display: inline-block;
             padding: 16px 40px;
@@ -285,29 +237,6 @@
                 padding: 50px 30px;
             }
             
-            .illustration {
-                width: 150px;
-                height: 150px;
-            }
-            
-            .circle:nth-child(1) {
-                width: 150px;
-                height: 150px;
-            }
-            
-            .circle:nth-child(2) {
-                width: 110px;
-                height: 110px;
-                top: 20px;
-                left: 20px;
-            }
-            
-            .circle:nth-child(3) {
-                width: 70px;
-                height: 70px;
-                top: 40px;
-                left: 40px;
-            }
         }
     </style>
 </head>
@@ -327,12 +256,6 @@
         <div class="error-code">404</div>
         <h1>Страница не найдена</h1>
         <p>К сожалению, запрашиваемая страница не существует или была перемещена.</p>
-        
-        <div class="illustration">
-            <div class="circle"></div>
-            <div class="circle"></div>
-            <div class="circle"></div>
-        </div>
         
         <a href="/" class="home-link">
             <span>Вернуться на главную</span>
