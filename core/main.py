@@ -863,19 +863,27 @@ async def starlette_http_exception_handler(request: Request, exc: StarletteHTTPE
     """Обработка HTTP исключений от Starlette (включая 404)"""
     # Для 404 ошибок
     if exc.status_code == 404:
-        # Для API endpoints возвращаем JSON
-        if (request.url.path.startswith("/api/") or 
-            request.url.path.startswith("/subscriptions/") or 
-            request.url.path.startswith("/payments/") or 
-            request.url.path.startswith("/users/") or 
-            request.url.path.startswith("/promo-codes/") or
-            request.url.path.startswith("/tickets/") or
-            request.url.path.startswith("/health")):
+        path = request.url.path
+        
+        # Для API endpoints возвращаем JSON (только чистые API пути, без /admin/web)
+        is_api_path = (
+            path.startswith("/api/") or 
+            path.startswith("/subscriptions/") or 
+            path.startswith("/payments/") or 
+            (path.startswith("/users/") and not path.startswith("/admin/web")) or 
+            path.startswith("/promo-codes/") or
+            (path.startswith("/tickets/") and not path.startswith("/admin/web")) or
+            path.startswith("/health") or
+            path.startswith("/support/")
+        )
+        
+        if is_api_path:
             return JSONResponse(
                 status_code=404,
                 content={"detail": "Not found"}
             )
-        # Для веб-страниц показываем красивую 404
+        
+        # Для всех остальных путей (включая /admin/web/*) показываем красивую 404
         if templates:
             return templates.TemplateResponse(
                 "404.html",
@@ -6509,17 +6517,24 @@ async def admin_web_restore_backup(
 @app.get("/{path:path}")
 async def catch_all(request: Request, path: str):
     """Перехватывает все необработанные GET запросы и показывает 404"""
-    # Для API endpoints возвращаем JSON
-    if (request.url.path.startswith("/api/") or 
-        request.url.path.startswith("/subscriptions/") or 
-        request.url.path.startswith("/payments/") or 
-        request.url.path.startswith("/users/") or 
-        request.url.path.startswith("/promo-codes/") or
-        request.url.path.startswith("/tickets/") or
-        request.url.path.startswith("/health")):
+    url_path = request.url.path
+    
+    # Для API endpoints возвращаем JSON (исключаем /admin/web пути)
+    is_api_path = (
+        url_path.startswith("/api/") or 
+        url_path.startswith("/subscriptions/") or 
+        url_path.startswith("/payments/") or 
+        (url_path.startswith("/users/") and not url_path.startswith("/admin/web")) or 
+        url_path.startswith("/promo-codes/") or
+        (url_path.startswith("/tickets/") and not url_path.startswith("/admin/web")) or
+        url_path.startswith("/health") or
+        url_path.startswith("/support/")
+    )
+    
+    if is_api_path:
         raise HTTPException(status_code=404, detail="Not found")
     
-    # Для веб-страниц показываем красивую 404
+    # Для всех остальных путей (включая /admin/web/*) показываем красивую 404
     if templates:
         return templates.TemplateResponse(
             "404.html",
