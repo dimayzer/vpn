@@ -39,6 +39,7 @@ setup_*.ps1
 setup_*.sh
 setup_*.bat
 *.txt
+!requirements.txt
 WEBHOOK_URL_EXAMPLE.txt
 
 

@@ -125,6 +125,18 @@ class Server(Base):
     is_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     capacity: Mapped[int | None] = mapped_column(Integer)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
+    
+    # Xray-core (VLESS) настройки сервера
+    xray_port: Mapped[int | None] = mapped_column(Integer, nullable=True, default=443)  # Порт Xray (обычно 443 для TLS)
+    xray_uuid: Mapped[str | None] = mapped_column(String(36), nullable=True)  # UUID сервера (для VLESS)
+    xray_flow: Mapped[str | None] = mapped_column(String(16), nullable=True)  # Flow control (xtls-rprx-vision, xtls-rprx-direct)
+    xray_network: Mapped[str | None] = mapped_column(String(16), nullable=True, default="tcp")  # tcp, ws, grpc
+    xray_security: Mapped[str | None] = mapped_column(String(16), nullable=True, default="tls")  # none, tls, reality
+    xray_sni: Mapped[str | None] = mapped_column(String(255), nullable=True)  # SNI для TLS (домен)
+    xray_reality_public_key: Mapped[str | None] = mapped_column(String(255), nullable=True)  # Public key для Reality
+    xray_reality_short_id: Mapped[str | None] = mapped_column(String(16), nullable=True)  # Short ID для Reality
+    xray_path: Mapped[str | None] = mapped_column(String(255), nullable=True)  # Path для WebSocket/gRPC
+    xray_host: Mapped[str | None] = mapped_column(String(255), nullable=True)  # Host header для WebSocket
 
     credentials: Mapped[list["VpnCredential"]] = relationship("VpnCredential", back_populates="server")
 

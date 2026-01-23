@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Управление серверами - Админ-панель</title>
+    <link rel="icon" type="image/png" href="/static/images/logo.png">
+    <link rel="shortcut icon" type="image/png" href="/static/images/logo.png">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            overflow: hidden;
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+        .header-brand {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        .header-logo {
+            width: 50px;
+            height: 50px;
+            object-fit: contain;
+            filter: drop-shadow(0 5px 15px rgba(0, 0, 0, 0.2));
+        }
+        .header-title h1 { font-size: 2em; margin: 0; }
+        .header-actions { display: flex; gap: 10px; }
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-block;
+            font-size: 14px;
+            transition: all 0.3s;
+        }
+        .btn-primary {
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+        }
+        .btn-primary:hover { background: rgba(255, 255, 255, 0.3); }
+        .content { padding: 24px; }
+        .servers-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+        .server-card {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 20px;
+            border: 1px solid #eef1f5;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .server-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+        .server-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+        .server-name {
+            font-size: 1.2em;
+            font-weight: 700;
+            color: #333;
+        }
+        .server-status {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 0.85em;
+            font-weight: 600;
+        }
+        .status-online {
+            background: #d4edda;
+            color: #155724;
+        }
+        .status-offline {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        .status-unknown {
+            background: #e2e3e5;
+            color: #383d41;
+        }
+        .server-info {
+            display: grid;
+            gap: 8px;
+            margin-bottom: 15px;
+        }
+        .info-row {
+            display: flex;
+            justify-content: space-between;
+            color: #555;
+            font-size: 0.9em;
+        }
+        .info-label { font-weight: 600; }
+        .server-actions {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+        .btn-small {
+            padding: 6px 12px;
+            font-size: 0.85em;
+        }
+        .btn-edit { background: #667eea; color: white; }
+        .btn-delete { background: #dc3545; color: white; }
+        .btn-toggle { background: #28a745; color: white; }
+        .btn-toggle.disabled { background: #6c757d; }
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            overflow: auto;
+        }
+        .modal-content {
+            background: white;
+            margin: 50px auto;
+            padding: 30px;
+            border-radius: 12px;
+            max-width: 600px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+        }
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        .modal-header h2 {
+            margin: 0;
+            color: #333;
+        }
+        .close {
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+            color: #999;
+        }
+        .close:hover { color: #333; }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 600;
+            color: #333;
+        }
+        .form-group input,
+        .form-group select {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+        .form-actions {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+            margin-top: 20px;
+        }
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: #999;
+        }
+        .empty-state h3 {
+            margin-bottom: 10px;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="header-brand">
+                <img src="/static/images/logo.png" alt="fioreVPN" class="header-logo" onerror="this.style.display='none';">
+                <div class="header-title">
+                    <h1>🖥️ Управление серверами</h1>
+                </div>
+            </div>
+            <div class="header-actions">
+                <a href="/admin/web/dashboard" class="btn btn-primary">← Назад</a>
+                <button class="btn btn-primary" onclick="openAddModal()">➕ Добавить сервер</button>
+            </div>
+        </div>
+
+        <div class="content">
+            {% if servers %}
+                <div class="servers-grid">
+                    {% for item in servers %}
+                        {% set server = item.server %}
+                        {% set status = item.status %}
+                        <div class="server-card" data-server-id="{{ server.id }}">
+                            <div class="server-header">
+                                <div class="server-name">{{ server.name }}</div>
+                                <span class="server-status {% if status and status.is_online %}status-online{% elif status and not status.is_online %}status-offline{% else %}status-unknown{% endif %}">
+                                    {% if status and status.is_online %}🟢 Онлайн{% elif status and not status.is_online %}🔴 Оффлайн{% else %}⚪ Неизвестно{% endif %}
+                                </span>
+                            </div>
+                            <div class="server-info">
+                                <div class="info-row">
+                                    <span class="info-label">Host:</span>
+                                    <span>{{ server.host }}</span>
+                                </div>
+                                {% if server.location %}
+                                <div class="info-row">
+                                    <span class="info-label">Локация:</span>
+                                    <span>{{ server.location }}</span>
+                                </div>
+                                {% endif %}
+                                <div class="info-row">
+                                    <span class="info-label">Порт:</span>
+                                    <span>{{ server.xray_port or 443 }}</span>
+                                </div>
+                                <div class="info-row">
+                                    <span class="info-label">Протокол:</span>
+                                    <span>{{ server.xray_network or 'tcp' }} / {{ server.xray_security or 'tls' }}</span>
+                                </div>
+                                {% if status and status.response_time_ms %}
+                                <div class="info-row">
+                                    <span class="info-label">Время отклика:</span>
+                                    <span>{{ status.response_time_ms }} мс</span>
+                                </div>
+                                {% endif %}
+                                <div class="info-row">
+                                    <span class="info-label">Статус:</span>
+                                    <span>{% if server.is_enabled %}✅ Включен{% else %}❌ Выключен{% endif %}</span>
+                                </div>
+                            </div>
+                            {% if status and status.checked_at %}
+                            <div class="info-row" style="margin-top: 10px; font-size: 0.8em; color: #999;">
+                                <span>Последняя проверка:</span>
+                                <span id="last-check-{{ server.id }}">{{ status.checked_at.strftime('%H:%M:%S') if status.checked_at else '—' }}</span>
+                            </div>
+                            {% endif %}
+                            <div class="server-actions">
+                                <button class="btn btn-primary btn-small" onclick="checkServer({{ server.id }}, event)" title="Проверить состояние">🔄 Проверить</button>
+                                <button class="btn btn-edit btn-small" onclick="openEditModal({{ server.id }})">✏️ Редактировать</button>
+                                <button class="btn btn-toggle btn-small {% if not server.is_enabled %}disabled{% endif %}" onclick="toggleServer({{ server.id }}, {{ 'false' if server.is_enabled else 'true' }})">
+                                    {% if server.is_enabled %}⏸️ Выключить{% else %}▶️ Включить{% endif %}
+                                </button>
+                                <button class="btn btn-delete btn-small" onclick="deleteServer({{ server.id }})">🗑️ Удалить</button>
+                            </div>
+                        </div>
+                    {% endfor %}
+                </div>
+            {% else %}
+                <div class="empty-state">
+                    <h3>Нет серверов</h3>
+                    <p>Добавьте первый сервер для начала работы</p>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Modal для добавления/редактирования -->
+    <div id="serverModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="modalTitle">Добавить сервер</h2>
+                <span class="close" onclick="closeModal()">&times;</span>
+            </div>
+            <form id="serverForm" onsubmit="saveServer(event)">
+                <input type="hidden" id="serverId" name="server_id">
+                <div class="form-group">
+                    <label>Название *</label>
+                    <input type="text" id="name" name="name" required>
+                </div>
+                <div class="form-group">
+                    <label>Host (IP или домен) *</label>
+                    <input type="text" id="host" name="host" required>
+                </div>
+                <div class="form-group">
+                    <label>Локация</label>
+                    <input type="text" id="location" name="location" placeholder="Например: Нидерланды">
+                </div>
+                <div class="form-group">
+                    <label>Порт Xray</label>
+                    <input type="number" id="xray_port" name="xray_port" value="443">
+                </div>
+                <div class="form-group">
+                    <label>UUID сервера *</label>
+                    <input type="text" id="xray_uuid" name="xray_uuid" required placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx">
+                </div>
+                <div class="form-group">
+                    <label>Network</label>
+                    <select id="xray_network" name="xray_network">
+                        <option value="tcp">TCP</option>
+                        <option value="grpc" selected>gRPC</option>
+                        <option value="ws">WebSocket</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Security</label>
+                    <select id="xray_security" name="xray_security">
+                        <option value="tls">TLS</option>
+                        <option value="reality" selected>Reality</option>
+                        <option value="none">None</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>SNI</label>
+                    <input type="text" id="xray_sni" name="xray_sni" placeholder="www.google.com">
+                </div>
+                <div class="form-group">
+                    <label>Reality Public Key</label>
+                    <input type="text" id="xray_reality_public_key" name="xray_reality_public_key">
+                </div>
+                <div class="form-group">
+                    <label>Reality Short ID</label>
+                    <input type="text" id="xray_reality_short_id" name="xray_reality_short_id">
+                </div>
+                <div class="form-group">
+                    <label>Path (для gRPC/WebSocket)</label>
+                    <input type="text" id="xray_path" name="xray_path" placeholder="grpc или /vless-ws">
+                </div>
+                <div class="form-group">
+                    <label>Host Header (для WebSocket)</label>
+                    <input type="text" id="xray_host" name="xray_host">
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn" onclick="closeModal()" style="background: #6c757d; color: white;">Отмена</button>
+                    <button type="submit" class="btn btn-primary">Сохранить</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        const csrfToken = "{{ csrf_token }}";
+        
+        function openAddModal() {
+            document.getElementById('modalTitle').textContent = 'Добавить сервер';
+            document.getElementById('serverForm').reset();
+            document.getElementById('serverId').value = '';
+            document.getElementById('serverModal').style.display = 'block';
+        }
+        
+        function openEditModal(serverId) {
+            fetch(`/admin/web/api/servers`)
+                .then(r => r.json())
+                .then(data => {
+                    const server = data.servers.find(s => s.id === serverId);
+                    if (server) {
+                        document.getElementById('modalTitle').textContent = 'Редактировать сервер';
+                        document.getElementById('serverId').value = server.id;
+                        document.getElementById('name').value = server.name;
+                        document.getElementById('host').value = server.host;
+                        document.getElementById('location').value = server.location || '';
+                        document.getElementById('xray_port').value = server.xray_port || 443;
+                        document.getElementById('xray_uuid').value = server.xray_uuid || '';
+                        document.getElementById('xray_network').value = server.xray_network || 'tcp';
+                        document.getElementById('xray_security').value = server.xray_security || 'tls';
+                        document.getElementById('xray_sni').value = server.xray_sni || '';
+                        document.getElementById('xray_reality_public_key').value = server.xray_reality_public_key || '';
+                        document.getElementById('xray_reality_short_id').value = server.xray_reality_short_id || '';
+                        document.getElementById('xray_path').value = server.xray_path || '';
+                        document.getElementById('xray_host').value = server.xray_host || '';
+                        document.getElementById('serverModal').style.display = 'block';
+                    }
+                });
+        }
+        
+        function closeModal() {
+            document.getElementById('serverModal').style.display = 'none';
+        }
+        
+        function saveServer(e) {
+            e.preventDefault();
+            const formData = new FormData(e.target);
+            const serverId = formData.get('server_id');
+            const data = Object.fromEntries(formData);
+            delete data.server_id;
+            
+            const url = serverId 
+                ? `/admin/web/api/servers/${serverId}`
+                : '/admin/web/api/servers';
+            const method = serverId ? 'PUT' : 'POST';
+            
+            fetch(url, {
+                method,
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            })
+            .then(r => r.json())
+            .then(() => {
+                closeModal();
+                location.reload();
+            })
+            .catch(err => alert('Ошибка: ' + err.message));
+        }
+        
+        function toggleServer(id, enabled) {
+            fetch(`/admin/web/api/servers/${id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ is_enabled: enabled === 'true' })
+            })
+            .then(() => location.reload())
+            .catch(err => alert('Ошибка: ' + err.message));
+        }
+        
+        function deleteServer(id) {
+            if (!confirm('Удалить сервер?')) return;
+            fetch(`/admin/web/api/servers/${id}`, { method: 'DELETE' })
+                .then(() => location.reload())
+                .catch(err => alert('Ошибка: ' + err.message));
+        }
+        
+        window.onclick = function(event) {
+            const modal = document.getElementById('serverModal');
+            if (event.target == modal) {
+                closeModal();
+            }
+        }
+        
+        function checkServer(serverId, evt) {
+            const btn = evt?.target || document.querySelector(`button[onclick*="checkServer(${serverId})"]`);
+            if (!btn) return;
+            
+            const originalText = btn.textContent;
+            btn.disabled = true;
+            btn.textContent = '⏳ Проверка...';
+            
+            fetch(`/admin/web/api/servers/${serverId}/check`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            })
+            .then(r => r.json())
+            .then(data => {
+                btn.disabled = false;
+                btn.textContent = originalText;
+                if (data.status) {
+                    // Обновляем статус на странице
+                    location.reload();
+                }
+            })
+            .catch(err => {
+                btn.disabled = false;
+                btn.textContent = originalText;
+                alert('Ошибка проверки: ' + err.message);
+            });
+        }
+        
+        // Автоматическое обновление статуса каждые 30 секунд
+        setInterval(() => {
+            fetch('/admin/web/api/servers')
+                .then(r => r.json())
+                .then(data => {
+                    // Обновляем статусы серверов без перезагрузки страницы
+                    data.servers.forEach(server => {
+                        const statusEl = document.querySelector(`[data-server-id="${server.id}"] .server-status`);
+                        if (statusEl && server.status) {
+                            statusEl.className = `server-status ${server.status.is_online ? 'status-online' : 'status-offline'}`;
+                            statusEl.textContent = server.status.is_online ? '🟢 Онлайн' : '🔴 Оффлайн';
+                            
+                            const lastCheckEl = document.getElementById(`last-check-${server.id}`);
+                            if (lastCheckEl && server.status.checked_at) {
+                                const date = new Date(server.status.checked_at);
+                                lastCheckEl.textContent = date.toLocaleTimeString('ru-RU');
+                            }
+                        }
+                    });
+                })
+                .catch(err => console.error('Ошибка обновления статуса:', err));
+        }, 30000); // Каждые 30 секунд
+    </script>
+</body>
+</html>
+

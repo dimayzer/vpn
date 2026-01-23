@@ -8,6 +8,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Копирование кода приложения
 COPY bot/ ./bot/
+COPY core/ ./core/
 COPY env.sample .env.sample
 
 # Запуск бота

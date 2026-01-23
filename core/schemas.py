@@ -107,3 +107,63 @@ class SubscriptionTrialIn(BaseModel):
     """Активация пробного периода"""
     tg_id: int
 
+
+class ServerCreateIn(BaseModel):
+    """Создание сервера"""
+    name: str
+    host: str
+    location: str | None = None
+    is_enabled: bool = True
+    capacity: int | None = None
+    xray_port: int | None = 443
+    xray_uuid: str | None = None
+    xray_flow: str | None = None
+    xray_network: str = "tcp"
+    xray_security: str = "tls"
+    xray_sni: str | None = None
+    xray_reality_public_key: str | None = None
+    xray_reality_short_id: str | None = None
+    xray_path: str | None = None
+    xray_host: str | None = None
+
+
+class ServerUpdateIn(BaseModel):
+    """Обновление сервера"""
+    name: str | None = None
+    host: str | None = None
+    location: str | None = None
+    is_enabled: bool | None = None
+    capacity: int | None = None
+    xray_port: int | None = None
+    xray_uuid: str | None = None
+    xray_flow: str | None = None
+    xray_network: str | None = None
+    xray_security: str | None = None
+    xray_sni: str | None = None
+    xray_reality_public_key: str | None = None
+    xray_reality_short_id: str | None = None
+    xray_path: str | None = None
+    xray_host: str | None = None
+
+
+class ServerOut(BaseModel):
+    """Информация о сервере"""
+    id: int
+    name: str
+    host: str
+    location: str | None = None
+    is_enabled: bool
+    capacity: int | None = None
+    created_at: datetime
+    xray_port: int | None = None
+    xray_uuid: str | None = None
+    xray_flow: str | None = None
+    xray_network: str | None = None
+    xray_security: str | None = None
+    xray_sni: str | None = None
+    xray_reality_public_key: str | None = None
+    xray_reality_short_id: str | None = None
+    xray_path: str | None = None
+    xray_host: str | None = None
+    status: dict | None = None  # Последний статус сервера
+

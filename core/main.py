@@ -62,6 +62,7 @@ from core.db.models import (
     Backup,
     VpnCredential,
 )
+from core.xray import generate_vless_config, generate_uuid
 from core.schemas import (
     PaymentCreateIn,
     PaymentWebhookIn,
@@ -76,9 +77,55 @@ from core.schemas import (
     PromoCodeApplyIn,
     SubscriptionPurchaseIn,
     SubscriptionTrialIn,
+    ServerCreateIn,
+    ServerUpdateIn,
+    ServerOut,
 )
 
 settings = get_settings()
+
+
+def _check_port_sync(host: str, port: int, timeout: int = 5) -> bool:
+    """Синхронная проверка доступности порта"""
+    import socket
+    try:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(timeout)
+        result = sock.connect_ex((host, port))
+        sock.close()
+        return result == 0
+    except Exception:
+        return False
+
+
+async def _check_server_status(server: Server) -> dict:
+    """Проверяет состояние одного сервера"""
+    import socket
+    import time
+    
+    port = server.xray_port or 443
+    host = server.host
+    
+    try:
+        start_time = time.time()
+        loop = asyncio.get_event_loop()
+        is_online = await loop.run_in_executor(
+            None,
+            lambda: _check_port_sync(host, port, timeout=5)
+        )
+        response_time_ms = int((time.time() - start_time) * 1000)
+        
+        return {
+            "is_online": is_online,
+            "response_time_ms": response_time_ms if is_online else None,
+            "error_message": None if is_online else f"Port {port} unreachable",
+        }
+    except Exception as e:
+        return {
+            "is_online": False,
+            "response_time_ms": None,
+            "error_message": str(e),
+        }
 
 
 async def _close_old_pending_payments():
@@ -593,24 +640,98 @@ async def lifespan(app: FastAPI):
     
     subscription_check_task = asyncio.create_task(check_expired_subscriptions())
     
+    # Фоновая задача для проверки состояния серверов
+    async def check_servers_status():
+        """Проверяет состояние серверов (доступность портов)"""
+        from core.db.session import SessionLocal
+        import logging
+        import time
+        
+        while True:
+            try:
+                await asyncio.sleep(300)  # Проверка каждые 5 минут
+                logging.info("Running scheduled server status check...")
+                
+                async with SessionLocal() as session:
+                    try:
+                        # Получаем все активные серверы
+                        servers = await session.scalars(
+                            select(Server)
+                            .where(Server.is_enabled == True)
+                        )
+                        servers_list = servers.all()
+                        
+                        checked_count = 0
+                        for server in servers_list:
+                            try:
+                                port = server.xray_port or 443
+                                host = server.host
+                                
+                                # Проверяем доступность порта
+                                status_result = await _check_server_status(server)
+                                is_online = status_result["is_online"]
+                                response_time_ms = status_result["response_time_ms"]
+                                error_message = status_result["error_message"]
+                                
+                                # Сохраняем статус
+                                status = ServerStatus(
+                                    server_id=server.id,
+                                    is_online=is_online,
+                                    response_time_ms=response_time_ms,
+                                    error_message=error_message,
+                                )
+                                session.add(status)
+                                checked_count += 1
+                                
+                            except Exception as e:
+                                logging.error(f"Error checking server {server.id} ({server.name}): {e}")
+                                # Сохраняем статус с ошибкой
+                                status = ServerStatus(
+                                    server_id=server.id,
+                                    is_online=False,
+                                    error_message=f"Check error: {str(e)}",
+                                )
+                                session.add(status)
+                        
+                        if checked_count > 0:
+                            await session.commit()
+                            logging.info(f"Checked status for {checked_count} servers")
+                            
+                            # Удаляем старые записи (оставляем только последние 100 на сервер)
+                            for server in servers_list:
+                                old_statuses = await session.scalars(
+                                    select(ServerStatus)
+                                    .where(ServerStatus.server_id == server.id)
+                                    .order_by(ServerStatus.checked_at.desc())
+                                    .offset(100)
+                                )
+                                for old_status in old_statuses.all():
+                                    await session.delete(old_status)
+                            await session.commit()
+                            
+                    except Exception as e:
+                        logging.error(f"Error checking servers status: {e}", exc_info=True)
+                        await session.rollback()
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logging.error(f"Error in server status check task: {e}", exc_info=True)
+    
+    server_check_task = asyncio.create_task(check_servers_status())
+    
     yield
     
     monitor_task.cancel()
     backup_task.cancel()
     payments_cleanup_task.cancel()
     subscription_check_task.cancel()
+    server_check_task.cancel()
     try:
         await monitor_task
         await backup_task
         await payments_cleanup_task
-    except asyncio.CancelledError:
-        pass
-    
-    monitor_task.cancel()
-    backup_task.cancel()
-    try:
-        await monitor_task
-        await backup_task
+        await subscription_check_task
+        await server_check_task
     except asyncio.CancelledError:
         pass
 
@@ -2619,6 +2740,14 @@ async def purchase_subscription(
     await _update_user_subscription_status(user.id, session)
     await session.commit()
     await session.refresh(user)  # Обновляем данные пользователя в сессии
+    
+    # Генерируем VPN конфиги для пользователя
+    try:
+        await _generate_vpn_configs_for_user(user.id, session, ends_at)
+    except Exception as e:
+        import logging
+        logging.error(f"Ошибка генерации VPN конфигов для пользователя {user.tg_id}: {e}")
+        # Не прерываем процесс покупки подписки из-за ошибки генерации конфигов
     
     # Отправляем уведомление пользователю (если включено)
     notify_on_subscription = await session.scalar(select(SystemSetting).where(SystemSetting.key == "notify_on_subscription"))
@@ -6606,6 +6735,381 @@ async def admin_web_restore_backup(
     asyncio.create_task(_restore_database_backup(backup_id, restored_by_tg_id=admin_user.get("tg_id")))
     
     return JSONResponse({"success": True, "message": "Восстановление запущено. Это может занять несколько минут."})
+
+
+async def _generate_vpn_configs_for_user(user_id: int, session: AsyncSession, expires_at: datetime):
+    """Генерирует VPN конфиги для пользователя на всех активных серверах"""
+    # Получаем все активные серверы
+    servers = await session.scalars(
+        select(Server)
+        .where(Server.is_enabled == True)
+        .where(Server.xray_uuid.isnot(None))
+    )
+    servers_list = servers.all()
+    
+    if not servers_list:
+        return  # Нет активных серверов
+    
+    user = await session.get(User, user_id)
+    if not user:
+        return
+    
+    # Генерируем UUID для пользователя (если еще нет)
+    user_uuid = generate_uuid()
+    
+    # Создаем конфиги для каждого сервера
+    for server in servers_list:
+        # Проверяем, нет ли уже активного конфига для этого сервера
+        existing = await session.scalar(
+            select(VpnCredential)
+            .where(VpnCredential.user_id == user_id)
+            .where(VpnCredential.server_id == server.id)
+            .where(VpnCredential.active == True)
+        )
+        
+        if existing:
+            # Обновляем существующий конфиг
+            existing.expires_at = expires_at
+            # Перегенерируем конфиг с новыми параметрами
+            # Для gRPC используем xray_path как serviceName
+            config_text = generate_vless_config(
+                user_uuid=user_uuid,
+                server_host=server.host,
+                server_port=server.xray_port or 443,
+                server_uuid=server.xray_uuid,
+                server_flow=server.xray_flow,
+                server_network=server.xray_network or "tcp",
+                server_security=server.xray_security or "tls",
+                server_sni=server.xray_sni,
+                server_reality_public_key=server.xray_reality_public_key,
+                server_reality_short_id=server.xray_reality_short_id,
+                server_path=server.xray_path,  # Для gRPC это будет serviceName
+                server_host_header=server.xray_host,
+                remark=f"{server.name}",
+            )
+            existing.config_text = config_text
+        else:
+            # Создаем новый конфиг
+            # Для gRPC используем xray_path как serviceName
+            config_text = generate_vless_config(
+                user_uuid=user_uuid,
+                server_host=server.host,
+                server_port=server.xray_port or 443,
+                server_uuid=server.xray_uuid,
+                server_flow=server.xray_flow,
+                server_network=server.xray_network or "tcp",
+                server_security=server.xray_security or "tls",
+                server_sni=server.xray_sni,
+                server_reality_public_key=server.xray_reality_public_key,
+                server_reality_short_id=server.xray_reality_short_id,
+                server_path=server.xray_path,  # Для gRPC это будет serviceName
+                server_host_header=server.xray_host,
+                remark=f"{server.name}",
+            )
+            credential = VpnCredential(
+                user_id=user_id,
+                server_id=server.id,
+                config_text=config_text,
+                active=True,
+                expires_at=expires_at,
+            )
+            session.add(credential)
+    
+    await session.commit()
+
+
+# API endpoints для управления серверами
+@app.get("/admin/web/servers", response_class=HTMLResponse)
+async def admin_web_servers(
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    admin_user: dict = Depends(_require_web_admin),
+):
+    """Страница управления серверами"""
+    if not templates:
+        return HTMLResponse(content="<h1>Шаблоны не настроены</h1>", status_code=500)
+    
+    servers_result = await session.scalars(
+        select(Server)
+        .order_by(Server.created_at.desc())
+    )
+    servers = servers_result.all()
+    
+    # Получаем последние статусы серверов
+    servers_with_status = []
+    for server in servers:
+        last_status = await session.scalar(
+            select(ServerStatus)
+            .where(ServerStatus.server_id == server.id)
+            .order_by(ServerStatus.checked_at.desc())
+        )
+        servers_with_status.append({
+            "server": server,
+            "status": last_status,
+        })
+    
+    csrf_token = _get_csrf_token(request)
+    return templates.TemplateResponse(
+        "servers.html",
+        {
+            "request": request,
+            "admin_user": admin_user,
+            "servers": servers_with_status,
+            "csrf_token": csrf_token,
+        },
+    )
+
+
+@app.get("/admin/web/api/servers")
+async def admin_api_servers(
+    session: AsyncSession = Depends(get_session),
+    admin_user: dict = Depends(_require_web_admin),
+):
+    """API: Получить список серверов"""
+    servers_result = await session.scalars(
+        select(Server)
+        .order_by(Server.created_at.desc())
+    )
+    servers = servers_result.all()
+    
+    # Получаем последние статусы
+    servers_list = []
+    for server in servers:
+        last_status = await session.scalar(
+            select(ServerStatus)
+            .where(ServerStatus.server_id == server.id)
+            .order_by(ServerStatus.checked_at.desc())
+        )
+        server_dict = {
+            "id": server.id,
+            "name": server.name,
+            "host": server.host,
+            "location": server.location,
+            "is_enabled": server.is_enabled,
+            "capacity": server.capacity,
+            "created_at": server.created_at.isoformat(),
+            "xray_port": server.xray_port,
+            "xray_network": server.xray_network,
+            "xray_security": server.xray_security,
+        }
+        if last_status:
+            server_dict["status"] = {
+                "is_online": last_status.is_online,
+                "response_time_ms": last_status.response_time_ms,
+                "checked_at": last_status.checked_at.isoformat(),
+            }
+        servers_list.append(server_dict)
+    
+    return {"servers": servers_list}
+
+
+@app.post("/admin/web/api/servers")
+async def admin_api_create_server(
+    payload: ServerCreateIn,
+    session: AsyncSession = Depends(get_session),
+    admin_user: dict = Depends(_require_web_admin),
+):
+    """API: Создать сервер"""
+    # Проверяем уникальность имени
+    existing = await session.scalar(select(Server).where(Server.name == payload.name))
+    if existing:
+        raise HTTPException(status_code=400, detail="server_name_exists")
+    
+    server = Server(
+        name=payload.name,
+        host=payload.host,
+        location=payload.location,
+        is_enabled=payload.is_enabled,
+        capacity=payload.capacity,
+        xray_port=payload.xray_port,
+        xray_uuid=payload.xray_uuid,
+        xray_flow=payload.xray_flow,
+        xray_network=payload.xray_network,
+        xray_security=payload.xray_security,
+        xray_sni=payload.xray_sni,
+        xray_reality_public_key=payload.xray_reality_public_key,
+        xray_reality_short_id=payload.xray_reality_short_id,
+        xray_path=payload.xray_path,
+        xray_host=payload.xray_host,
+    )
+    session.add(server)
+    await session.commit()
+    await session.refresh(server)
+    
+    # Логируем создание
+    session.add(
+        AuditLog(
+            action=AuditLogAction.admin_action,
+            admin_tg_id=admin_user.get("tg_id"),
+            details=f"Создан сервер: {server.name} ({server.host})",
+        )
+    )
+    await session.commit()
+    
+    return {"id": server.id, "name": server.name}
+
+
+@app.put("/admin/web/api/servers/{server_id}")
+async def admin_api_update_server(
+    server_id: int,
+    payload: ServerUpdateIn,
+    session: AsyncSession = Depends(get_session),
+    admin_user: dict = Depends(_require_web_admin),
+):
+    """API: Обновить сервер"""
+    server = await session.get(Server, server_id)
+    if not server:
+        raise HTTPException(status_code=404, detail="server_not_found")
+    
+    # Обновляем поля
+    if payload.name is not None:
+        # Проверяем уникальность имени
+        existing = await session.scalar(select(Server).where(Server.name == payload.name).where(Server.id != server_id))
+        if existing:
+            raise HTTPException(status_code=400, detail="server_name_exists")
+        server.name = payload.name
+    
+    if payload.host is not None:
+        server.host = payload.host
+    if payload.location is not None:
+        server.location = payload.location
+    if payload.is_enabled is not None:
+        server.is_enabled = payload.is_enabled
+    if payload.capacity is not None:
+        server.capacity = payload.capacity
+    if payload.xray_port is not None:
+        server.xray_port = payload.xray_port
+    if payload.xray_uuid is not None:
+        server.xray_uuid = payload.xray_uuid
+    if payload.xray_flow is not None:
+        server.xray_flow = payload.xray_flow
+    if payload.xray_network is not None:
+        server.xray_network = payload.xray_network
+    if payload.xray_security is not None:
+        server.xray_security = payload.xray_security
+    if payload.xray_sni is not None:
+        server.xray_sni = payload.xray_sni
+    if payload.xray_reality_public_key is not None:
+        server.xray_reality_public_key = payload.xray_reality_public_key
+    if payload.xray_reality_short_id is not None:
+        server.xray_reality_short_id = payload.xray_reality_short_id
+    if payload.xray_path is not None:
+        server.xray_path = payload.xray_path
+    if payload.xray_host is not None:
+        server.xray_host = payload.xray_host
+    
+    await session.commit()
+    
+    # Логируем обновление
+    session.add(
+        AuditLog(
+            action=AuditLogAction.admin_action,
+            admin_tg_id=admin_user.get("tg_id"),
+            details=f"Обновлен сервер: {server.name} (ID: {server_id})",
+        )
+    )
+    await session.commit()
+    
+    return {"id": server.id, "name": server.name}
+
+
+@app.delete("/admin/web/api/servers/{server_id}")
+async def admin_api_delete_server(
+    server_id: int,
+    session: AsyncSession = Depends(get_session),
+    admin_user: dict = Depends(_require_web_admin),
+):
+    """API: Удалить сервер"""
+    server = await session.get(Server, server_id)
+    if not server:
+        raise HTTPException(status_code=404, detail="server_not_found")
+    
+    server_name = server.name
+    await session.delete(server)
+    await session.commit()
+    
+    # Логируем удаление
+    session.add(
+        AuditLog(
+            action=AuditLogAction.admin_action,
+            admin_tg_id=admin_user.get("tg_id"),
+            details=f"Удален сервер: {server_name} (ID: {server_id})",
+        )
+    )
+    await session.commit()
+    
+    return {"success": True}
+
+
+@app.post("/admin/web/api/servers/{server_id}/check")
+async def admin_api_check_server(
+    server_id: int,
+    session: AsyncSession = Depends(get_session),
+    admin_user: dict = Depends(_require_web_admin),
+):
+    """API: Проверить состояние сервера вручную"""
+    server = await session.get(Server, server_id)
+    if not server:
+        raise HTTPException(status_code=404, detail="server_not_found")
+    
+    # Проверяем состояние
+    status_result = await _check_server_status(server)
+    
+    # Сохраняем статус
+    status = ServerStatus(
+        server_id=server.id,
+        is_online=status_result["is_online"],
+        response_time_ms=status_result["response_time_ms"],
+        error_message=status_result["error_message"],
+    )
+    session.add(status)
+    await session.commit()
+    
+    return {
+        "server_id": server.id,
+        "server_name": server.name,
+        "status": {
+            "is_online": status_result["is_online"],
+            "response_time_ms": status_result["response_time_ms"],
+            "error_message": status_result["error_message"],
+            "checked_at": status.checked_at.isoformat(),
+        }
+    }
+
+
+@app.get("/users/{tg_id}/vpn-configs")
+async def get_user_vpn_configs(
+    tg_id: int,
+    session: AsyncSession = Depends(get_session),
+):
+    """Получить VPN конфиги пользователя"""
+    user = await session.scalar(select(User).where(User.tg_id == tg_id))
+    if not user:
+        raise HTTPException(status_code=404, detail="user_not_found")
+    
+    # Проверяем, есть ли активная подписка
+    if not user.has_active_subscription:
+        raise HTTPException(status_code=403, detail="no_active_subscription")
+    
+    # Получаем активные конфиги
+    credentials = await session.scalars(
+        select(VpnCredential)
+        .where(VpnCredential.user_id == user.id)
+        .where(VpnCredential.active == True)
+        .options(selectinload(VpnCredential.server))
+    )
+    configs_list = credentials.all()
+    
+    configs = []
+    for cred in configs_list:
+        configs.append({
+            "id": cred.id,
+            "server_name": cred.server.name if cred.server else None,
+            "config": cred.config_text,
+            "expires_at": cred.expires_at.isoformat() if cred.expires_at else None,
+        })
+    
+    return {"configs": configs}
 
 
 # Catch-all роут для всех необработанных путей (должен быть последним)
