@@ -879,6 +879,29 @@ async def http_exception_handler(request: Request, exc: HTTPException):
     raise exc
 
 
+@app.exception_handler(404)
+async def not_found_handler(request: Request, exc: HTTPException):
+    """Обработка 404 ошибок - красивая страница"""
+    # Для API endpoints возвращаем JSON
+    if request.url.path.startswith("/api/") or request.url.path.startswith("/subscriptions/") or request.url.path.startswith("/payments/") or request.url.path.startswith("/users/") or request.url.path.startswith("/promo-codes/"):
+        return JSONResponse(
+            status_code=404,
+            content={"detail": "Not found"}
+        )
+    # Для веб-страниц показываем красивую 404
+    if templates:
+        return templates.TemplateResponse(
+            "404.html",
+            {"request": request},
+            status_code=404
+        )
+    # Если шаблоны не загружены, возвращаем простой текст
+    return HTMLResponse(
+        content="<h1>404 - Страница не найдена</h1><p><a href='/admin/login'>Перейти в админ-панель</a></p>",
+        status_code=404
+    )
+
+
 def _gen_ref_code() -> str:
     alphabet = string.ascii_uppercase + string.digits
     return "".join(secrets.choice(alphabet) for _ in range(8))
