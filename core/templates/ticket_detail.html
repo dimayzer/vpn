@@ -30,6 +30,22 @@
             flex-wrap: wrap;
             gap: 10px;
         }
+        .header-brand {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        .header-logo {
+            width: 50px;
+            height: 50px;
+            object-fit: contain;
+            filter: drop-shadow(0 5px 15px rgba(0, 0, 0, 0.2));
+            animation: pulseLogo 3s ease-in-out infinite;
+        }
+        @keyframes pulseLogo {
+            0%, 100% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.05); opacity: 0.95; }
+        }
         .badge {
             display: inline-block;
             padding: 4px 10px;
@@ -113,9 +129,13 @@
 <body>
     <div class="container">
         <div class="header">
-            <div>
-                <div style="font-size:14px; opacity:0.85;">Тикет #{{ ticket.id }}</div>
-                <h2 style="margin:4px 0 0 0;">{{ ticket.topic }}</h2>
+            <div class="header-brand">
+                <img src="/static/images/logo.png" alt="fioreVPN" class="header-logo" onerror="this.style.display='none';">
+                <div>
+                    <div style="font-size:14px; opacity:0.85;">Тикет #{{ ticket.id }}</div>
+                    <h2 style="margin:4px 0 0 0;">{{ ticket.topic }}</h2>
+                </div>
+            </div>
             </div>
             <div style="display:flex; gap:8px; align-items:center;">
                 <span class="badge {% if ticket.status in ['new','in_progress','open'] %}badge-open{% else %}badge-closed{% endif %}">

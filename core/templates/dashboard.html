@@ -39,6 +39,30 @@
             gap: 15px;
         }
         
+        .header-brand {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        
+        .header-logo {
+            width: 50px;
+            height: 50px;
+            object-fit: contain;
+            filter: drop-shadow(0 5px 15px rgba(0, 0, 0, 0.2));
+            animation: pulseLogo 3s ease-in-out infinite;
+        }
+        
+        @keyframes pulseLogo {
+            0%, 100% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.05); opacity: 0.95; }
+        }
+        
+        .header-title h1 {
+            font-size: 2em;
+            margin: 0;
+        }
+        
         .header h1 {
             font-size: 2em;
             margin: 0;
@@ -353,7 +377,12 @@
     
     <div class="container">
         <div class="header">
-            <h1>📊 Дашборд</h1>
+            <div class="header-brand">
+                <img src="/static/images/logo.png" alt="fioreVPN" class="header-logo" onerror="this.style.display='none';">
+                <div class="header-title">
+                    <h1>📊 Дашборд</h1>
+                </div>
+            </div>
             <div class="header-actions">
                 <div class="notifications-bell" id="notifications-bell" onclick="toggleNotifications()" title="Уведомления">
                     🔔
@@ -887,7 +916,7 @@
             
             function hideOverlay() {
                 if (loadingOverlay) {
-                    loadingOverlay.classList.remove('show');
+                        loadingOverlay.classList.remove('show');
                     document.body.classList.remove('loading');
                 }
             }
@@ -913,8 +942,8 @@
                 // Если страница загружена из кэша (back/forward navigation)
                 if (event.persisted) {
                     hideOverlay();
-                }
-            });
+                    }
+                });
             
             // Показываем индикатор загрузки при переходах
             document.addEventListener('DOMContentLoaded', function() {
@@ -942,10 +971,10 @@
                 document.querySelectorAll('a[href*="/download"]').forEach(link => {
                     link.addEventListener('click', function(e) {
                         // Сразу скрываем оверлей при скачивании
-                        if (loadingOverlay) {
-                            loadingOverlay.classList.remove('show');
+                            if (loadingOverlay) {
+                                loadingOverlay.classList.remove('show');
                             document.body.classList.remove('loading');
-                        }
+                            }
                     });
                 });
             });
@@ -1007,13 +1036,13 @@
         document.addEventListener('click', function(e) {
             const target = e.target.closest('a[href*="/download"]');
             if (target) {
-                const loadingOverlay = document.getElementById('loading-overlay');
+            const loadingOverlay = document.getElementById('loading-overlay');
                 // Сразу скрываем оверлей при клике на ссылку скачивания
                 if (loadingOverlay) {
                     loadingOverlay.classList.remove('show');
                     document.body.classList.remove('loading');
                 }
-            }
+        }
         });
         
         // Создание бэкапа
@@ -1052,10 +1081,10 @@
                     if (res.redirected) {
                         window.location.href = res.url;
                     } else {
-                        alert('Бэкап создается. Обновите страницу через несколько секунд.');
-                        setTimeout(() => {
-                            loadRecentBackups();
-                        }, 2000);
+                    alert('Бэкап создается. Обновите страницу через несколько секунд.');
+                    setTimeout(() => {
+                        loadRecentBackups();
+                    }, 2000);
                     }
                 } else {
                     return res.json().then(data => {

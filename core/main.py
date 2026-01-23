@@ -669,7 +669,12 @@ async def robots_txt():
 
 @app.get("/favicon.ico")
 async def favicon_ico():
-    """Favicon - возвращаем 204 No Content"""
+    """Favicon - возвращаем логотип если есть"""
+    import os
+    favicon_path = "core/static/images/logo.png"
+    if os.path.exists(favicon_path):
+        from fastapi.responses import FileResponse
+        return FileResponse(favicon_path, media_type="image/png")
     return Response(status_code=204)
 
 

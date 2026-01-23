@@ -30,6 +30,22 @@
             flex-wrap: wrap;
             gap: 10px;
         }
+        .header-brand {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        .header-logo {
+            width: 50px;
+            height: 50px;
+            object-fit: contain;
+            filter: drop-shadow(0 5px 15px rgba(0, 0, 0, 0.2));
+            animation: pulseLogo 3s ease-in-out infinite;
+        }
+        @keyframes pulseLogo {
+            0%, 100% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.05); opacity: 0.95; }
+        }
         .header a {
             color: white;
             text-decoration: none;
@@ -163,9 +179,13 @@
 <body>
     <div class="container">
         <div class="header">
-            <div>
-                <div style="font-size:1.4em; font-weight:700;">👤 Профиль пользователя</div>
-                <div style="opacity:0.9;">tg_id: {{ user.tg_id }}</div>
+            <div class="header-brand">
+                <img src="/static/images/logo.png" alt="fioreVPN" class="header-logo" onerror="this.style.display='none';">
+                <div>
+                    <div style="font-size:1.4em; font-weight:700;">👤 Профиль пользователя</div>
+                    <div style="opacity:0.9;">tg_id: {{ user.tg_id }}</div>
+                </div>
+            </div>
             </div>
             <div class="actions">
                 <a class="btn-muted" href="/admin/web/users">← К списку</a>

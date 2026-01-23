@@ -30,6 +30,26 @@
             flex-wrap: wrap;
             gap: 15px;
         }
+        .header-brand {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        .header-logo {
+            width: 50px;
+            height: 50px;
+            object-fit: contain;
+            filter: drop-shadow(0 5px 15px rgba(0, 0, 0, 0.2));
+            animation: pulseLogo 3s ease-in-out infinite;
+        }
+        @keyframes pulseLogo {
+            0%, 100% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.05); opacity: 0.95; }
+        }
+        .header-title h1 {
+            font-size: 2em;
+            margin: 0;
+        }
         .header h1 {
             font-size: 2em;
             margin: 0;
@@ -213,7 +233,12 @@
 <body>
     <div class="container">
         <div class="header">
-            <h1>💳 Платежи</h1>
+            <div class="header-brand">
+                <img src="/static/images/logo.png" alt="fioreVPN" class="header-logo" onerror="this.style.display='none';">
+                <div class="header-title">
+                    <h1>💳 Платежи</h1>
+                </div>
+            </div>
             <div class="header-actions">
                 <div class="notifications-bell" id="notifications-bell" onclick="toggleNotifications()" title="Уведомления">
                     🔔

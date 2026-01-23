@@ -30,6 +30,26 @@
             flex-wrap: wrap;
             gap: 15px;
         }
+        .header-brand {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        .header-logo {
+            width: 50px;
+            height: 50px;
+            object-fit: contain;
+            filter: drop-shadow(0 5px 15px rgba(0, 0, 0, 0.2));
+            animation: pulseLogo 3s ease-in-out infinite;
+        }
+        @keyframes pulseLogo {
+            0%, 100% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.05); opacity: 0.95; }
+        }
+        .header-title h1 {
+            font-size: 2em;
+            margin: 0;
+        }
         .header h1 {
             font-size: 2em;
             margin: 0;
@@ -145,9 +165,13 @@
 <body>
     <div class="container">
         <div class="header">
-            <div>
-                <div style="font-size:14px; opacity:0.9;">Логи</div>
-                <h2 style="margin:4px 0 0 0;">Действия админов и системы</h2>
+            <div class="header-brand">
+                <img src="/static/images/logo.png" alt="fioreVPN" class="header-logo" onerror="this.style.display='none';">
+                <div class="header-title">
+                    <div style="font-size:14px; opacity:0.9;">Логи</div>
+                    <h2 style="margin:4px 0 0 0;">Действия админов и системы</h2>
+                </div>
+            </div>
             </div>
             <div style="display:flex; gap:10px; align-items:center;">
                 <a class="btn btn-muted" href="/admin/web/dashboard" style="text-decoration:none;">← К дашборду</a>

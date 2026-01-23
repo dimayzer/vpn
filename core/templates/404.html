@@ -66,6 +66,25 @@
             }
         }
         
+        .brand-logo-404 {
+            margin-bottom: 30px;
+            animation: fadeIn 1s ease-out 0.1s both;
+        }
+        
+        .logo-img-404 {
+            width: 120px;
+            height: 120px;
+            object-fit: contain;
+            filter: drop-shadow(0 15px 40px rgba(102, 126, 234, 0.4));
+            animation: floatLogo404 4s ease-in-out infinite;
+            opacity: 0.8;
+        }
+        
+        @keyframes floatLogo404 {
+            0%, 100% { transform: translateY(0px) rotate(0deg); }
+            50% { transform: translateY(-15px) rotate(5deg); }
+        }
+        
         .error-code {
             font-size: 150px;
             font-weight: 800;
@@ -253,6 +272,9 @@
     </div>
     
     <div class="container">
+        <div class="brand-logo-404">
+            <img src="/static/images/logo.png" alt="fioreVPN" class="logo-img-404" onerror="this.style.display='none';">
+        </div>
         <div class="error-code">404</div>
         <h1>Страница не найдена</h1>
         <p>К сожалению, запрашиваемая страница не существует или была перемещена.</p>

@@ -83,6 +83,47 @@
             to { opacity: 1; }
         }
         
+        .brand-logo {
+            margin-bottom: 20px;
+            animation: fadeIn 1s ease-out 0.2s both;
+        }
+        
+        .logo-img {
+            width: 100px;
+            height: 100px;
+            object-fit: contain;
+            filter: drop-shadow(0 10px 30px rgba(102, 126, 234, 0.3));
+            animation: floatLogo 3s ease-in-out infinite;
+        }
+        
+        @keyframes floatLogo {
+            0%, 100% { transform: translateY(0px) scale(1); }
+            50% { transform: translateY(-10px) scale(1.05); }
+        }
+        
+        .logo-fallback {
+            width: 100px;
+            height: 100px;
+            font-size: 60px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto;
+        }
+        
+        .brand-name {
+            margin-bottom: 15px;
+            animation: fadeIn 1s ease-out 0.25s both;
+        }
+        
+        .brand-name-img {
+            height: 40px;
+            width: auto;
+            object-fit: contain;
+            filter: drop-shadow(0 5px 15px rgba(102, 126, 234, 0.2));
+            opacity: 0.9;
+        }
+        
         .login-container p {
             color: #666;
             margin-bottom: 40px;
@@ -217,7 +258,14 @@
     </div>
     
     <div class="login-container">
-        <h1>🔐 Вход в админ-панель</h1>
+        <div class="brand-logo">
+            <img src="/static/images/logo.png" alt="fioreVPN" class="logo-img" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
+            <div class="logo-fallback" style="display:none;">🔒</div>
+        </div>
+        <div class="brand-name">
+            <img src="/static/images/brand-name.png" alt="fiore" class="brand-name-img" onerror="this.style.display='none';">
+        </div>
+        <h1>Вход в админ-панель</h1>
         <p>Войдите через Telegram для доступа к админ-панели</p>
         <div id="telegram-widget" class="telegram-widget"></div>
         <div class="info" id="info-box">
