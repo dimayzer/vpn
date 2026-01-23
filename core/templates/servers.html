@@ -639,51 +639,60 @@
         
         // Функция для обновления статусов серверов
         function updateServerStatuses() {
-            fetch('/admin/web/api/servers')
+            // Добавляем timestamp для предотвращения кеширования
+            const timestamp = new Date().getTime();
+            fetch(`/admin/web/api/servers?t=${timestamp}`, {
+                method: 'GET',
+                headers: {
+                    'Cache-Control': 'no-cache, no-store, must-revalidate',
+                    'Pragma': 'no-cache',
+                    'Expires': '0'
+                }
+            })
                 .then(r => r.json())
                 .then(data => {
                     // Обновляем статусы серверов без перезагрузки страницы
                     data.servers.forEach(server => {
-                        const statusEl = document.querySelector(`[data-server-id="${server.id}"] .server-status`);
+                        const serverCard = document.querySelector(`[data-server-id="${server.id}"]`);
+                        if (!serverCard) return;
+                        
+                        // Обновляем статус
+                        const statusEl = serverCard.querySelector('.server-status');
                         if (statusEl && server.status) {
                             statusEl.className = `server-status ${server.status.is_online ? 'status-online' : 'status-offline'}`;
                             statusEl.textContent = server.status.is_online ? '🟢 Онлайн' : '🔴 Оффлайн';
-                            
-                            const lastCheckEl = document.getElementById(`last-check-${server.id}`);
-                            if (lastCheckEl && server.status && server.status.checked_at) {
-                                try {
-                                    const date = new Date(server.status.checked_at);
-                                    // Время в UTC из API, конвертируем в MSK (UTC+3)
-                                    // Используем Intl.DateTimeFormat для правильной конвертации часового пояса
-                                    const formatter = new Intl.DateTimeFormat('ru-RU', {
-                                        timeZone: 'Europe/Moscow',
-                                        hour: '2-digit',
-                                        minute: '2-digit',
-                                        second: '2-digit',
-                                        hour12: false
-                                    });
-                                    lastCheckEl.textContent = formatter.format(date);
-                                } catch (e) {
-                                    console.error('Ошибка при форматировании времени:', e);
-                                }
+                        }
+                        
+                        // Обновляем время последней проверки
+                        const lastCheckEl = document.getElementById(`last-check-${server.id}`);
+                        if (lastCheckEl && server.status && server.status.checked_at) {
+                            try {
+                                const date = new Date(server.status.checked_at);
+                                const formatter = new Intl.DateTimeFormat('ru-RU', {
+                                    timeZone: 'Europe/Moscow',
+                                    hour: '2-digit',
+                                    minute: '2-digit',
+                                    second: '2-digit',
+                                    hour12: false
+                                });
+                                lastCheckEl.textContent = formatter.format(date);
+                            } catch (e) {
+                                console.error('Ошибка при форматировании времени:', e);
                             }
-                            
-                            // Обновляем время отклика если есть
-                            if (server.status && server.status.response_time_ms != null) {
-                                const serverCard = document.querySelector(`[data-server-id="${server.id}"]`);
-                                if (serverCard) {
-                                    const responseTimeRows = serverCard.querySelectorAll('.info-row');
-                                    responseTimeRows.forEach(row => {
-                                        const label = row.querySelector('.info-label');
-                                        if (label && label.textContent.includes('Время отклика')) {
-                                            const valueSpan = row.querySelector('span:last-child');
-                                            if (valueSpan) {
-                                                valueSpan.textContent = `${server.status.response_time_ms} мс`;
-                                            }
-                                        }
-                                    });
+                        }
+                        
+                        // Обновляем время отклика
+                        if (server.status && server.status.response_time_ms != null) {
+                            const responseTimeRows = serverCard.querySelectorAll('.info-row');
+                            responseTimeRows.forEach(row => {
+                                const label = row.querySelector('.info-label');
+                                if (label && label.textContent.includes('Время отклика')) {
+                                    const valueSpan = row.querySelector('span:last-child');
+                                    if (valueSpan) {
+                                        valueSpan.textContent = `${server.status.response_time_ms} мс`;
+                                    }
                                 }
-                            }
+                            });
                         }
                     });
                 })
@@ -693,9 +702,9 @@
         // Обновляем статусы сразу при загрузке страницы
         updateServerStatuses();
         
-        // Автоматическое обновление статуса каждые 10 секунд для быстрого отображения результатов проверки
+        // Автоматическое обновление статуса каждые 5 секунд для быстрого отображения результатов проверки
         // (серверы проверяются на бэкенде каждые 60 секунд, но мы обновляем UI чаще, чтобы сразу видеть результаты)
-        setInterval(updateServerStatuses, 10000); // Каждые 10 секунд
+        setInterval(updateServerStatuses, 5000); // Каждые 5 секунд
         
         let pingChart = null;
         let currentServerId = null;
