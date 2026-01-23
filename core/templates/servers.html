@@ -269,7 +269,7 @@
                     {% for item in servers %}
                         {% set server = item.server %}
                         {% set status = item.status %}
-                        <div class="server-card" data-server-id="{{ server.id }}">
+                        <div class="server-card" data-server-id="{{ server.id }}" onclick="openServerDetails({{ server.id }}, event)" style="cursor: pointer;">
                             <div class="server-header">
                                 <div class="server-name">{{ server.name }}</div>
                                 <span class="server-status {% if status and status.is_online %}status-online{% elif status and not status.is_online %}status-offline{% else %}status-unknown{% endif %}">
@@ -318,9 +318,16 @@
                                                     const el = document.getElementById('last-check-{{ server.id }}');
                                                     if (el && el.dataset.checkedAt) {
                                                         const date = new Date(el.dataset.checkedAt);
-                                                        // Время уже в UTC из базы данных, добавляем 3 часа для MSK (UTC+3)
-                                                        date.setHours(date.getHours() + 3);
-                                                        el.textContent = date.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                                                        // Время в UTC из базы данных, конвертируем в MSK (UTC+3)
+                                                        // Используем Intl.DateTimeFormat для правильной конвертации часового пояса
+                                                        const formatter = new Intl.DateTimeFormat('ru-RU', {
+                                                            timeZone: 'Europe/Moscow',
+                                                            hour: '2-digit',
+                                                            minute: '2-digit',
+                                                            second: '2-digit',
+                                                            hour12: false
+                                                        });
+                                                        el.textContent = formatter.format(date);
                                                     }
                                                 } catch (e) {
                                                     console.error('Ошибка при форматировании времени:', e);
@@ -334,12 +341,12 @@
                             </div>
                             {% endif %}
                             <div class="server-actions">
-                                <button class="btn btn-primary btn-small" onclick="checkServer({{ server.id }}, event)" title="Проверить состояние">🔄 Проверить</button>
-                                <button class="btn btn-edit btn-small" onclick="openEditModal({{ server.id }})">✏️ Редактировать</button>
-                                <button class="btn btn-toggle btn-small {% if not server.is_enabled %}disabled{% endif %}" onclick="toggleServer({{ server.id }}, {{ 'false' if server.is_enabled else 'true' }})">
+                                <button class="btn btn-primary btn-small" onclick="event.stopPropagation(); checkServer({{ server.id }}, event);" title="Проверить состояние">🔄 Проверить</button>
+                                <button class="btn btn-edit btn-small" onclick="event.stopPropagation(); openEditModal({{ server.id }});">✏️ Редактировать</button>
+                                <button class="btn btn-toggle btn-small {% if not server.is_enabled %}disabled{% endif %}" onclick="event.stopPropagation(); toggleServer({{ server.id }}, {{ 'false' if server.is_enabled else 'true' }});">
                                     {% if server.is_enabled %}⏸️ Выключить{% else %}▶️ Включить{% endif %}
                                 </button>
-                                <button class="btn btn-delete btn-small" onclick="deleteServer({{ server.id }})">🗑️ Удалить</button>
+                                <button class="btn btn-delete btn-small" onclick="event.stopPropagation(); deleteServer({{ server.id }});">🗑️ Удалить</button>
                             </div>
                         </div>
                     {% endfor %}
@@ -440,6 +447,55 @@
         </div>
     </div>
 
+    <!-- Modal для подробной информации о сервере -->
+    <div id="serverDetailsModal" class="modal">
+        <div class="modal-content" style="max-width: 900px; max-height: 90vh; overflow-y: auto;">
+            <div class="modal-header">
+                <h2 id="serverDetailsTitle">Детали сервера</h2>
+                <span class="close" onclick="closeServerDetailsModal()">&times;</span>
+            </div>
+            <div id="serverDetailsContent" style="padding: 20px;">
+                <div style="margin-bottom: 20px;">
+                    <div class="info-row" style="margin-bottom: 10px;">
+                        <span class="info-label">Статус:</span>
+                        <span id="detailsStatus" class="server-status">—</span>
+                    </div>
+                    <div class="info-row" style="margin-bottom: 10px;">
+                        <span class="info-label">Host:</span>
+                        <span id="detailsHost">—</span>
+                    </div>
+                    <div class="info-row" style="margin-bottom: 10px;">
+                        <span class="info-label">Порт:</span>
+                        <span id="detailsPort">—</span>
+                    </div>
+                    <div class="info-row" style="margin-bottom: 10px;">
+                        <span class="info-label">Протокол:</span>
+                        <span id="detailsProtocol">—</span>
+                    </div>
+                    <div class="info-row" style="margin-bottom: 10px;">
+                        <span class="info-label">Последняя проверка:</span>
+                        <span id="detailsLastCheck">—</span>
+                    </div>
+                    <div class="info-row" style="margin-bottom: 10px;">
+                        <span class="info-label">Время отклика:</span>
+                        <span id="detailsResponseTime">—</span>
+                    </div>
+                </div>
+                
+                <div style="margin: 20px 0;">
+                    <h3 style="margin-bottom: 10px;">График пинга (последние 100 проверок)</h3>
+                    <canvas id="pingChart" width="800" height="300" style="max-width: 100%; height: auto;"></canvas>
+                </div>
+                
+                <div style="margin-top: 20px; display: flex; gap: 10px;">
+                    <button class="btn btn-primary" onclick="checkServerFromDetails()">🔄 Проверить сейчас</button>
+                    <button class="btn btn-primary" id="x3uiButton" onclick="openX3UI()" style="display: none;">🔗 Открыть 3x-UI</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <script>
         const csrfToken = "{{ csrf_token }}";
         
@@ -575,12 +631,13 @@
                 .catch(err => alert('Ошибка: ' + err.message));
         }
         
-        window.onclick = function(event) {
-            const modal = document.getElementById('serverModal');
-            if (event.target == modal) {
+        // Обработчик клика вне модалки (только для serverModal)
+        document.addEventListener('click', function(event) {
+            const serverModal = document.getElementById('serverModal');
+            if (event.target == serverModal) {
                 closeModal();
             }
-        }
+        });
         
         function checkServer(serverId, evt) {
             const btn = evt?.target || document.querySelector(`button[onclick*="checkServer(${serverId})"]`);
@@ -610,7 +667,7 @@
             });
         }
         
-        // Автоматическое обновление статуса каждые 30 секунд
+        // Автоматическое обновление статуса каждые 10 секунд
         setInterval(() => {
             fetch('/admin/web/api/servers')
                 .then(r => r.json())
@@ -626,9 +683,16 @@
                             if (lastCheckEl && server.status && server.status.checked_at) {
                                 try {
                                     const date = new Date(server.status.checked_at);
-                                    // Время уже в UTC из API, добавляем 3 часа для MSK (UTC+3)
-                                    date.setHours(date.getHours() + 3);
-                                    lastCheckEl.textContent = date.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                                    // Время в UTC из API, конвертируем в MSK (UTC+3)
+                                    // Используем Intl.DateTimeFormat для правильной конвертации часового пояса
+                                    const formatter = new Intl.DateTimeFormat('ru-RU', {
+                                        timeZone: 'Europe/Moscow',
+                                        hour: '2-digit',
+                                        minute: '2-digit',
+                                        second: '2-digit',
+                                        hour12: false
+                                    });
+                                    lastCheckEl.textContent = formatter.format(date);
                                 } catch (e) {
                                     console.error('Ошибка при форматировании времени:', e);
                                 }
@@ -654,7 +718,270 @@
                     });
                 })
                 .catch(err => console.error('Ошибка обновления статуса:', err));
-        }, 30000); // Каждые 30 секунд
+        }, 10000); // Каждые 10 секунд
+        
+        let pingChart = null;
+        let currentServerId = null;
+        let currentServerData = null;
+        
+        function openServerDetails(serverId, event) {
+            if (event) event.stopPropagation();
+            currentServerId = serverId;
+            
+            // Получаем данные сервера
+            fetch(`/admin/web/api/servers`)
+                .then(r => r.json())
+                .then(data => {
+                    const server = data.servers.find(s => s.id === serverId);
+                    if (!server) {
+                        alert('Сервер не найден');
+                        return;
+                    }
+                    currentServerData = server;
+                    
+                    // Заполняем основную информацию
+                    document.getElementById('serverDetailsTitle').textContent = server.name;
+                    document.getElementById('detailsHost').textContent = server.host;
+                    document.getElementById('detailsPort').textContent = server.xray_port || 443;
+                    document.getElementById('detailsProtocol').textContent = `${server.xray_network || 'tcp'} / ${server.xray_security || 'tls'}`;
+                    
+                    const statusEl = document.getElementById('detailsStatus');
+                    if (server.status) {
+                        statusEl.className = `server-status ${server.status.is_online ? 'status-online' : 'status-offline'}`;
+                        statusEl.textContent = server.status.is_online ? '🟢 Онлайн' : '🔴 Оффлайн';
+                        if (server.status.checked_at) {
+                            const date = new Date(server.status.checked_at);
+                            // Конвертируем в MSK используя правильный часовой пояс
+                            const formatter = new Intl.DateTimeFormat('ru-RU', {
+                                timeZone: 'Europe/Moscow',
+                                year: 'numeric',
+                                month: '2-digit',
+                                day: '2-digit',
+                                hour: '2-digit',
+                                minute: '2-digit',
+                                second: '2-digit',
+                                hour12: false
+                            });
+                            document.getElementById('detailsLastCheck').textContent = formatter.format(date);
+                        }
+                        document.getElementById('detailsResponseTime').textContent = 
+                            server.status.response_time_ms != null ? `${server.status.response_time_ms} мс` : '—';
+                    } else {
+                        statusEl.className = 'server-status status-unknown';
+                        statusEl.textContent = '⚪ Неизвестно';
+                    }
+                    
+                    // Показываем кнопку 3x-UI если есть URL
+                    const x3uiBtn = document.getElementById('x3uiButton');
+                    if (server.x3ui_api_url) {
+                        x3uiBtn.style.display = 'inline-block';
+                    } else {
+                        x3uiBtn.style.display = 'none';
+                    }
+                    
+                    // Загружаем историю и строим график
+                    loadServerHistory(serverId);
+                    
+                    document.getElementById('serverDetailsModal').style.display = 'block';
+                })
+                .catch(err => {
+                    console.error('Ошибка при загрузке данных сервера:', err);
+                    alert('Ошибка при загрузке данных сервера');
+                });
+        }
+        
+        function closeServerDetailsModal() {
+            document.getElementById('serverDetailsModal').style.display = 'none';
+            if (pingChart) {
+                pingChart.destroy();
+                pingChart = null;
+            }
+        }
+        
+        function loadServerHistory(serverId) {
+            fetch(`/admin/web/api/servers/${serverId}/history`)
+                .then(r => r.json())
+                .then(data => {
+                    updatePingChart(data.history);
+                })
+                .catch(err => {
+                    console.error('Ошибка при загрузке истории:', err);
+                });
+        }
+        
+        function updatePingChart(history) {
+            const ctx = document.getElementById('pingChart').getContext('2d');
+            
+            // Подготавливаем данные
+            const labels = history.map(h => {
+                if (!h.checked_at) return '';
+                const date = new Date(h.checked_at);
+                // Конвертируем в MSK используя правильный часовой пояс
+                const formatter = new Intl.DateTimeFormat('ru-RU', {
+                    timeZone: 'Europe/Moscow',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    second: '2-digit',
+                    hour12: false
+                });
+                return formatter.format(date);
+            });
+            
+            const pingData = history.map(h => h.is_online && h.response_time_ms != null ? h.response_time_ms : null);
+            const onlineData = history.map(h => h.is_online ? 1 : 0);
+            
+            // Уничтожаем предыдущий график если есть
+            if (pingChart) {
+                pingChart.destroy();
+            }
+            
+            pingChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        {
+                            label: 'Пинг (мс)',
+                            data: pingData,
+                            borderColor: '#667eea',
+                            backgroundColor: 'rgba(102, 126, 234, 0.1)',
+                            yAxisID: 'y',
+                            tension: 0.4,
+                            spanGaps: true,
+                        },
+                        {
+                            label: 'Онлайн (1=да, 0=нет)',
+                            data: onlineData,
+                            borderColor: '#28a745',
+                            backgroundColor: 'rgba(40, 167, 69, 0.1)',
+                            yAxisID: 'y1',
+                            tension: 0.4,
+                            pointRadius: 2,
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    scales: {
+                        y: {
+                            type: 'linear',
+                            display: true,
+                            position: 'left',
+                            title: {
+                                display: true,
+                                text: 'Пинг (мс)'
+                            }
+                        },
+                        y1: {
+                            type: 'linear',
+                            display: true,
+                            position: 'right',
+                            title: {
+                                display: true,
+                                text: 'Онлайн'
+                            },
+                            min: 0,
+                            max: 1,
+                            ticks: {
+                                stepSize: 1
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            display: true,
+                            position: 'top',
+                        },
+                        tooltip: {
+                            mode: 'index',
+                            intersect: false,
+                        }
+                    }
+                }
+            });
+        }
+        
+        function checkServerFromDetails() {
+            if (!currentServerId) return;
+            
+            const btn = event.target;
+            const originalText = btn.textContent;
+            btn.disabled = true;
+            btn.textContent = 'Проверка...';
+            
+            fetch(`/admin/web/api/servers/${currentServerId}/check`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            })
+            .then(r => r.json())
+            .then(data => {
+                btn.disabled = false;
+                btn.textContent = originalText;
+                
+                // Обновляем информацию
+                if (data.status) {
+                    const statusEl = document.getElementById('detailsStatus');
+                    statusEl.className = `server-status ${data.status.is_online ? 'status-online' : 'status-offline'}`;
+                    statusEl.textContent = data.status.is_online ? '🟢 Онлайн' : '🔴 Оффлайн';
+                    
+                    if (data.status.checked_at) {
+                        const date = new Date(data.status.checked_at);
+                        // Конвертируем в MSK используя правильный часовой пояс
+                        const formatter = new Intl.DateTimeFormat('ru-RU', {
+                            timeZone: 'Europe/Moscow',
+                            year: 'numeric',
+                            month: '2-digit',
+                            day: '2-digit',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                            second: '2-digit',
+                            hour12: false
+                        });
+                        document.getElementById('detailsLastCheck').textContent = formatter.format(date);
+                    }
+                    document.getElementById('detailsResponseTime').textContent = 
+                        data.status.response_time_ms != null ? `${data.status.response_time_ms} мс` : '—';
+                }
+                
+                // Перезагружаем историю
+                loadServerHistory(currentServerId);
+            })
+            .catch(err => {
+                console.error('Ошибка при проверке:', err);
+                btn.disabled = false;
+                btn.textContent = originalText;
+                alert('Ошибка при проверке сервера');
+            });
+        }
+        
+        function openX3UI() {
+            if (!currentServerData || !currentServerData.x3ui_api_url) {
+                alert('URL 3x-UI не настроен для этого сервера');
+                return;
+            }
+            
+            // Преобразуем API URL в URL панели (убираем /panel/api, оставляем /panel/)
+            let panelUrl = currentServerData.x3ui_api_url;
+            if (panelUrl.endsWith('/panel/api')) {
+                panelUrl = panelUrl.replace('/panel/api', '/panel/');
+            } else if (panelUrl.endsWith('/api')) {
+                panelUrl = panelUrl.replace('/api', '/panel/');
+            } else if (!panelUrl.endsWith('/panel/')) {
+                panelUrl = panelUrl.replace(/\/$/, '') + '/panel/';
+            }
+            
+            // Открываем в новой вкладке
+            window.open(panelUrl, '_blank');
+        }
+        
+        // Обработчик клика вне модалки (только для serverDetailsModal)
+        document.addEventListener('click', function(event) {
+            const modal = document.getElementById('serverDetailsModal');
+            if (event.target == modal) {
+                closeServerDetailsModal();
+            }
+        });
     </script>
 </body>
 </html>

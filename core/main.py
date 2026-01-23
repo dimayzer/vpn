@@ -711,7 +711,7 @@ async def lifespan(app: FastAPI):
         
         while True:
             try:
-                await asyncio.sleep(300)  # Проверка каждые 5 минут
+                await asyncio.sleep(10)  # Проверка каждые 10 секунд
                 logging.info("Running scheduled server status check...")
                 
                 async with SessionLocal() as session:
@@ -7185,33 +7185,79 @@ async def admin_api_check_server(
     admin_user: dict = Depends(_require_web_admin),
 ):
     """API: Проверить состояние сервера вручную"""
+    try:
+        server = await session.get(Server, server_id)
+        if not server:
+            raise HTTPException(status_code=404, detail="server_not_found")
+        
+        logger.info(f"Ручная проверка сервера {server.name} (ID: {server_id})")
+        
+        # Проверяем состояние (используем тот же метод, что и автопроверка)
+        status_result = await _check_server_status(server)
+        
+        logger.info(f"Результат ручной проверки {server.name}: online={status_result['is_online']}, time={status_result.get('response_time_ms')}ms")
+        
+        # Сохраняем статус
+        status = ServerStatus(
+            server_id=server.id,
+            is_online=status_result["is_online"],
+            response_time_ms=status_result["response_time_ms"],
+            error_message=status_result["error_message"],
+        )
+        session.add(status)
+        await session.commit()
+        
+        # Время уже в UTC, на клиенте добавим +3 часа через JavaScript
+        return {
+            "server_id": server.id,
+            "server_name": server.name,
+            "status": {
+                "is_online": status_result["is_online"],
+                "response_time_ms": status_result["response_time_ms"],
+                "error_message": status_result["error_message"],
+                "checked_at": status.checked_at.isoformat() if status.checked_at else None,
+            }
+        }
+    except Exception as e:
+        logger.error(f"Ошибка при ручной проверке сервера {server_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Ошибка проверки: {str(e)}")
+
+
+@app.get("/admin/web/api/servers/{server_id}/history")
+async def admin_api_server_history(
+    server_id: int,
+    session: AsyncSession = Depends(get_session),
+    admin_user: dict = Depends(_require_web_admin),
+    limit: int = 100,
+):
+    """API: Получить историю статусов сервера для графика"""
     server = await session.get(Server, server_id)
     if not server:
         raise HTTPException(status_code=404, detail="server_not_found")
     
-    # Проверяем состояние
-    status_result = await _check_server_status(server)
-    
-    # Сохраняем статус
-    status = ServerStatus(
-        server_id=server.id,
-        is_online=status_result["is_online"],
-        response_time_ms=status_result["response_time_ms"],
-        error_message=status_result["error_message"],
+    # Получаем последние N записей статусов
+    statuses_result = await session.scalars(
+        select(ServerStatus)
+        .where(ServerStatus.server_id == server.id)
+        .order_by(ServerStatus.checked_at.desc())
+        .limit(limit)
     )
-    session.add(status)
-    await session.commit()
+    statuses = statuses_result.all()
     
-    # Время уже в UTC, на клиенте добавим +3 часа через JavaScript
+    # Формируем данные для графика (в обратном порядке - от старых к новым)
+    history = []
+    for status in reversed(statuses):
+        history.append({
+            "checked_at": status.checked_at.isoformat() if status.checked_at else None,
+            "is_online": status.is_online,
+            "response_time_ms": status.response_time_ms,
+            "error_message": status.error_message,
+        })
+    
     return {
         "server_id": server.id,
         "server_name": server.name,
-        "status": {
-            "is_online": status_result["is_online"],
-            "response_time_ms": status_result["response_time_ms"],
-            "error_message": status_result["error_message"],
-            "checked_at": status.checked_at.isoformat() if status.checked_at else None,
-        }
+        "history": history,
     }
 
 

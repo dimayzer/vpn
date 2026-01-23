@@ -138,6 +138,10 @@
             background: #fd7e14;
             color: white;
         }
+        .badge-admin {
+            background: #6c757d;
+            color: white;
+        }
         .log-row-critical {
             background: #fff5f5;
             border-left: 3px solid #dc3545;
@@ -222,10 +226,11 @@
                     {% set is_payment_created = log.action == 'payment_created' %}
                     {% set is_payment_status = log.action == 'payment_status_changed' %}
                     {% set is_payment_other = log.action in ['payment_processed', 'payment_webhook_received'] %}
+                    {% set is_admin = log.action == 'admin_action' %}
                     <tr class="{% if is_critical %}log-row-critical{% elif is_warning %}log-row-warning{% elif is_backup %}log-row-backup{% elif is_payment_created %}log-row-payment-created{% elif is_payment_status %}log-row-payment-status{% elif is_payment_other %}log-row-payment{% endif %}">
                         <td>{{ log.id }}</td>
                         <td>
-                            <span class="badge {% if is_critical %}badge-critical{% elif is_warning %}badge-warning{% elif log.action == 'user_registered' %}badge-success{% elif is_backup %}badge-backup{% elif is_payment_created %}badge-payment-created{% elif is_payment_status %}badge-payment-status{% elif is_payment_other %}badge-payment{% endif %}">
+                            <span class="badge {% if is_critical %}badge-critical{% elif is_warning %}badge-warning{% elif log.action == 'user_registered' %}badge-success{% elif is_backup %}badge-backup{% elif is_payment_created %}badge-payment-created{% elif is_payment_status %}badge-payment-status{% elif is_payment_other %}badge-payment{% elif is_admin %}badge-admin{% endif %}">
                                 {{ log.action }}
                             </span>
                         </td>
