@@ -16,11 +16,14 @@
         }
         .container {
             max-width: 1400px;
+            width: 100%;
             margin: 0 auto;
             background: white;
             border-radius: 12px;
             box-shadow: 0 10px 40px rgba(0,0,0,0.2);
             overflow: hidden;
+            display: flex;
+            flex-direction: column;
         }
         .header {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -169,6 +172,14 @@
     </style>
 </head>
 <body>
+    <!-- Индикатор загрузки (показывается сразу при загрузке страницы) -->
+    <div class="loading-overlay show" id="loading-overlay">
+        <div style="text-align: center;">
+            <div class="loading-spinner"></div>
+            <div class="loading-text">Загрузка...</div>
+        </div>
+    </div>
+    
     <div class="container">
         <div class="header">
             <div class="header-brand">
@@ -178,8 +189,7 @@
                     <h2 style="margin:4px 0 0 0;">Действия админов и системы</h2>
                 </div>
             </div>
-            </div>
-            <div style="display:flex; gap:10px; align-items:center;">
+            <div class="header-actions" style="display:flex; gap:10px; align-items:center;">
                 <a class="btn btn-muted" href="/admin/web/dashboard" style="text-decoration:none;">← К дашборду</a>
                 <a class="btn btn-primary" href="/admin/web/export/logs.csv" style="text-decoration:none;">📥 CSV</a>
                 <a class="btn btn-primary" href="/admin/web/export/logs.xlsx" style="text-decoration:none;">📊 Excel</a>
@@ -257,15 +267,22 @@
         </div>
     </div>
     
-    <!-- Индикатор загрузки -->
-    <div class="loading-overlay show" id="loading-overlay">
-        <div style="text-align: center;">
-            <div class="loading-spinner"></div>
-            <div class="loading-text">Загрузка...</div>
-        </div>
-    </div>
-    
     <script>
+        // Гарантированно удаляем класс loading после загрузки страницы
+        (function() {
+            function removeLoadingClass() {
+                document.body.classList.remove('loading');
+            }
+            
+            // Удаляем сразу, если страница уже загружена
+            if (document.readyState === 'complete' || document.readyState === 'interactive') {
+                removeLoadingClass();
+            } else {
+                window.addEventListener('load', removeLoadingClass);
+                document.addEventListener('DOMContentLoaded', removeLoadingClass);
+            }
+        })();
+        
         // Универсальный скрипт для управления оверлеем загрузки
         (function() {
             const loadingOverlay = document.getElementById('loading-overlay');

@@ -88,7 +88,7 @@ from core.schemas import (
 settings = get_settings()
 
 
-def _check_port_sync(host: str, port: int, timeout: int = 5) -> bool:
+def _check_port_sync(host: str, port: int, timeout: int = 10) -> bool:
     """Синхронная проверка доступности порта"""
     import socket
     sock = None
@@ -127,7 +127,7 @@ async def _check_server_status(server: Server) -> dict:
         loop = asyncio.get_event_loop()
         is_online = await loop.run_in_executor(
             None,
-            lambda: _check_port_sync(host, port, timeout=5)
+            lambda: _check_port_sync(host, port, timeout=10)
         )
         response_time_ms = int((time.time() - start_time) * 1000)
         
@@ -715,7 +715,7 @@ async def lifespan(app: FastAPI):
         
         while True:
             try:
-                await asyncio.sleep(10)  # Проверка каждые 10 секунд
+                await asyncio.sleep(60)  # Проверка каждые 60 секунд
                 logging.info("Running scheduled server status check...")
                 
                 async with SessionLocal() as session:
@@ -733,6 +733,21 @@ async def lifespan(app: FastAPI):
                                 port = server.xray_port or 443
                                 host = server.host
                                 
+                                # Проверяем, когда была последняя проверка этого сервера
+                                last_status = await session.scalar(
+                                    select(ServerStatus)
+                                    .where(ServerStatus.server_id == server.id)
+                                    .order_by(ServerStatus.checked_at.desc())
+                                )
+                                
+                                # Если последняя проверка была менее 20 секунд назад, пропускаем
+                                if last_status and last_status.checked_at:
+                                    from datetime import datetime, timezone
+                                    time_since_check = (datetime.now(timezone.utc) - last_status.checked_at).total_seconds()
+                                    if time_since_check < 20:
+                                        logger.debug(f"Пропускаем проверку сервера {server.name}, последняя проверка была {time_since_check:.1f} секунд назад")
+                                        continue
+                                
                                 # Проверяем доступность порта
                                 status_result = await _check_server_status(server)
                                 is_online = status_result["is_online"]
@@ -749,8 +764,8 @@ async def lifespan(app: FastAPI):
                                 session.add(status)
                                 checked_count += 1
                                 
-                                # Небольшая задержка между проверками серверов для избежания перегрузки
-                                await asyncio.sleep(0.2)
+                                # Задержка между проверками серверов для избежания rate limiting
+                                await asyncio.sleep(1.0)  # Увеличено до 1 секунды
                                 
                             except Exception as e:
                                 logging.error(f"Error checking server {server.id} ({server.name}): {e}")

@@ -24,9 +24,8 @@
 /* Блокировка скролла при показе оверлея */
 body.loading {
     overflow: hidden;
-    position: fixed;
-    width: 100%;
-    height: 100%;
+    /* Не используем position: fixed, чтобы не ломать layout контейнера */
+    /* Вместо этого просто блокируем скролл через overflow: hidden */
 }
 
 .loading-overlay > div {

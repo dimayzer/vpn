@@ -16,11 +16,14 @@
         }
         .container {
             max-width: 1200px;
+            width: 100%;
             margin: 0 auto;
             background: white;
             border-radius: 12px;
             box-shadow: 0 10px 40px rgba(0,0,0,0.2);
             overflow: hidden;
+            display: flex;
+            flex-direction: column;
         }
         .header {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -48,6 +51,12 @@
             0%, 100% { transform: scale(1); opacity: 1; }
             50% { transform: scale(1.05); opacity: 0.95; }
         }
+        .header-actions {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
         .badge {
             display: inline-block;
             padding: 4px 10px;
@@ -70,6 +79,8 @@
         .btn-muted { background: #e9ecef; color: #333; }
         .section {
             padding: 20px 24px;
+            flex: 1;
+            min-height: 0;
         }
         .chat-box {
             border: 1px solid #eef1f5;
@@ -120,15 +131,37 @@
         .value { font-weight: 600; }
         .pager { display:flex; gap:8px; margin:12px 0; }
     </style>
+</head>
+<body>
+    <!-- Индикатор загрузки (показывается сразу при загрузке страницы) -->
+    <div class="loading-overlay show" id="loading-overlay">
+        <div style="text-align: center;">
+            <div class="loading-spinner"></div>
+            <div class="loading-text">Загрузка...</div>
+        </div>
+    </div>
+    
     <script>
         // Telegram Login сохраняет сессию; force_reauth=1 заставит подтвердить снова
         if (new URLSearchParams(window.location.search).get('force_reauth') === '1') {
             sessionStorage.clear();
             localStorage.clear();
         }
+        
+        // Гарантированно удаляем класс loading после загрузки страницы
+        function removeLoadingClass() {
+            document.body.classList.remove('loading');
+        }
+        
+        // Удаляем сразу, если страница уже загружена
+        if (document.readyState === 'complete' || document.readyState === 'interactive') {
+            removeLoadingClass();
+        } else {
+            window.addEventListener('load', removeLoadingClass);
+            document.addEventListener('DOMContentLoaded', removeLoadingClass);
+        }
     </script>
-</head>
-<body>
+    
     <div class="container">
         <div class="header">
             <div class="header-brand">
@@ -138,8 +171,7 @@
                     <h2 style="margin:4px 0 0 0;">{{ ticket.topic }}</h2>
                 </div>
             </div>
-            </div>
-            <div style="display:flex; gap:8px; align-items:center;">
+            <div class="header-actions" style="display:flex; gap:8px; align-items:center;">
                 <span class="badge {% if ticket.status in ['new','in_progress','open'] %}badge-open{% else %}badge-closed{% endif %}">
                     {% if ticket.status == 'new' or ticket.status == 'open' %}Создан{% elif ticket.status == 'in_progress' %}В работе{% else %}Закрыт{% endif %}
                 </span>
@@ -292,14 +324,6 @@
             poll();
         })();
     </script>
-    
-    <!-- Индикатор загрузки -->
-    <div class="loading-overlay show" id="loading-overlay">
-        <div style="text-align: center;">
-            <div class="loading-spinner"></div>
-            <div class="loading-text">Загрузка...</div>
-        </div>
-    </div>
     
     <script>
         // Универсальный скрипт для управления оверлеем загрузки

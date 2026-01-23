@@ -16,11 +16,14 @@
         }
         .container {
             max-width: 1100px;
+            width: 100%;
             margin: 0 auto;
             background: white;
             border-radius: 12px;
             box-shadow: 0 10px 40px rgba(0,0,0,0.15);
             overflow: hidden;
+            display: flex;
+            flex-direction: column;
         }
         .header {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -55,9 +58,20 @@
             background: rgba(255,255,255,0.2);
             border-radius: 8px;
         }
+        .header-actions {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
         .section {
             padding: 24px 28px;
             border-bottom: 1px solid #f1f3f5;
+            flex: 1;
+            min-height: 0;
+        }
+        .section:last-child {
+            border-bottom: none;
         }
         .grid {
             display: grid;
@@ -179,6 +193,14 @@
     </style>
 </head>
 <body>
+    <!-- Индикатор загрузки (показывается сразу при загрузке страницы) -->
+    <div class="loading-overlay show" id="loading-overlay">
+        <div style="text-align: center;">
+            <div class="loading-spinner"></div>
+            <div class="loading-text">Загрузка...</div>
+        </div>
+    </div>
+    
     <div class="container">
         <div class="header">
             <div class="header-brand">
@@ -188,10 +210,9 @@
                     <div style="opacity:0.9;">tg_id: {{ user.tg_id }}</div>
                 </div>
             </div>
-            </div>
-            <div class="actions">
-                <a class="btn-muted" href="/admin/web/users">← К списку</a>
-                <a class="btn-muted" href="/admin/logout">🚪 Выйти</a>
+            <div class="header-actions">
+                <a class="btn btn-muted" href="/admin/web/users">← К списку</a>
+                <a class="btn btn-muted" href="/admin/logout">🚪 Выйти</a>
             </div>
         </div>
 
@@ -1072,14 +1093,6 @@
         }
     </script>
     
-    <!-- Индикатор загрузки -->
-    <div class="loading-overlay show" id="loading-overlay">
-        <div style="text-align: center;">
-            <div class="loading-spinner"></div>
-            <div class="loading-text">Загрузка...</div>
-        </div>
-    </div>
-    
     <script>
         // Универсальный скрипт для управления оверлеем загрузки
         (function() {
@@ -1106,6 +1119,18 @@
                     hideOverlay();
                 }
             });
+            
+            // Гарантированно удаляем класс loading после загрузки страницы
+            function removeLoadingClass() {
+                document.body.classList.remove('loading');
+            }
+            
+            // Удаляем сразу, если страница уже загружена
+            if (document.readyState === 'complete' || document.readyState === 'interactive') {
+                removeLoadingClass();
+            } else {
+                window.addEventListener('load', removeLoadingClass);
+            }
             
             document.addEventListener('DOMContentLoaded', function() {
                 const links = document.querySelectorAll('a[href^="/admin/web"]');

@@ -341,7 +341,6 @@
                             </div>
                             {% endif %}
                             <div class="server-actions">
-                                <button class="btn btn-primary btn-small" onclick="event.stopPropagation(); checkServer({{ server.id }}, event);" title="Проверить состояние">🔄 Проверить</button>
                                 <button class="btn btn-edit btn-small" onclick="event.stopPropagation(); openEditModal({{ server.id }});">✏️ Редактировать</button>
                                 <button class="btn btn-toggle btn-small {% if not server.is_enabled %}disabled{% endif %}" onclick="event.stopPropagation(); toggleServer({{ server.id }}, {{ 'false' if server.is_enabled else 'true' }});">
                                     {% if server.is_enabled %}⏸️ Выключить{% else %}▶️ Включить{% endif %}
@@ -488,7 +487,6 @@
                 </div>
                 
                 <div style="margin-top: 20px; display: flex; gap: 10px;">
-                    <button class="btn btn-primary" onclick="checkServerFromDetails()">🔄 Проверить сейчас</button>
                     <button class="btn btn-primary" id="x3uiButton" onclick="openX3UI()" style="display: none;">🔗 Открыть 3x-UI</button>
                 </div>
             </div>
@@ -639,35 +637,7 @@
             }
         });
         
-        function checkServer(serverId, evt) {
-            const btn = evt?.target || document.querySelector(`button[onclick*="checkServer(${serverId})"]`);
-            if (!btn) return;
-            
-            const originalText = btn.textContent;
-            btn.disabled = true;
-            btn.textContent = '⏳ Проверка...';
-            
-            fetch(`/admin/web/api/servers/${serverId}/check`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' }
-            })
-            .then(r => r.json())
-            .then(data => {
-                btn.disabled = false;
-                btn.textContent = originalText;
-                if (data.status) {
-                    // Обновляем статус на странице
-                    location.reload();
-                }
-            })
-            .catch(err => {
-                btn.disabled = false;
-                btn.textContent = originalText;
-                alert('Ошибка проверки: ' + err.message);
-            });
-        }
-        
-        // Автоматическое обновление статуса каждые 10 секунд
+        // Автоматическое обновление статуса каждые 60 секунд
         setInterval(() => {
             fetch('/admin/web/api/servers')
                 .then(r => r.json())
@@ -718,7 +688,7 @@
                     });
                 })
                 .catch(err => console.error('Ошибка обновления статуса:', err));
-        }, 10000); // Каждые 10 секунд
+        }, 60000); // Каждые 60 секунд
         
         let pingChart = null;
         let currentServerId = null;
@@ -899,59 +869,6 @@
                         }
                     }
                 }
-            });
-        }
-        
-        function checkServerFromDetails() {
-            if (!currentServerId) return;
-            
-            const btn = event.target;
-            const originalText = btn.textContent;
-            btn.disabled = true;
-            btn.textContent = 'Проверка...';
-            
-            fetch(`/admin/web/api/servers/${currentServerId}/check`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' }
-            })
-            .then(r => r.json())
-            .then(data => {
-                btn.disabled = false;
-                btn.textContent = originalText;
-                
-                // Обновляем информацию
-                if (data.status) {
-                    const statusEl = document.getElementById('detailsStatus');
-                    statusEl.className = `server-status ${data.status.is_online ? 'status-online' : 'status-offline'}`;
-                    statusEl.textContent = data.status.is_online ? '🟢 Онлайн' : '🔴 Оффлайн';
-                    
-                    if (data.status.checked_at) {
-                        const date = new Date(data.status.checked_at);
-                        // Конвертируем в MSK используя правильный часовой пояс
-                        const formatter = new Intl.DateTimeFormat('ru-RU', {
-                            timeZone: 'Europe/Moscow',
-                            year: 'numeric',
-                            month: '2-digit',
-                            day: '2-digit',
-                            hour: '2-digit',
-                            minute: '2-digit',
-                            second: '2-digit',
-                            hour12: false
-                        });
-                        document.getElementById('detailsLastCheck').textContent = formatter.format(date);
-                    }
-                    document.getElementById('detailsResponseTime').textContent = 
-                        data.status.response_time_ms != null ? `${data.status.response_time_ms} мс` : '—';
-                }
-                
-                // Перезагружаем историю
-                loadServerHistory(currentServerId);
-            })
-            .catch(err => {
-                console.error('Ошибка при проверке:', err);
-                btn.disabled = false;
-                btn.textContent = originalText;
-                alert('Ошибка при проверке сервера');
             });
         }
         
