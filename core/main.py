@@ -494,6 +494,35 @@ async def lifespan(app: FastAPI):
         except Exception:
             pass
         
+        # Добавляем колонки для таблицы servers, если их нет
+        server_columns = [
+            ("xray_port", "INTEGER", "DEFAULT 443"),
+            ("xray_uuid", "VARCHAR(36)", ""),
+            ("xray_flow", "VARCHAR(16)", ""),
+            ("xray_network", "VARCHAR(16)", "DEFAULT 'tcp'"),
+            ("xray_security", "VARCHAR(16)", "DEFAULT 'tls'"),
+            ("xray_sni", "VARCHAR(255)", ""),
+            ("xray_reality_public_key", "VARCHAR(255)", ""),
+            ("xray_reality_short_id", "VARCHAR(16)", ""),
+            ("xray_path", "VARCHAR(255)", ""),
+            ("xray_host", "VARCHAR(255)", ""),
+        ]
+        
+        for column_name, column_type, default in server_columns:
+            try:
+                result = await conn.execute(
+                    text(f"SELECT column_name FROM information_schema.columns WHERE table_name='servers' AND column_name='{column_name}'")
+                )
+                exists = result.scalar()
+                if not exists:
+                    default_clause = f" {default}" if default else ""
+                    await conn.execute(text(f"ALTER TABLE servers ADD COLUMN {column_name} {column_type}{default_clause}"))
+                    import logging
+                    logging.info(f"Added {column_name} column to servers table")
+            except Exception as e:
+                import logging
+                logging.warning(f"Could not add {column_name} column (may already exist): {e}")
+        
         # Проверяем и добавляем payment_status_changed
         try:
             result = await conn.execute(
