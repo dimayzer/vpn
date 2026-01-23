@@ -88,7 +88,7 @@ async def status(message: Message) -> None:
                     moscow_tz = ZoneInfo("Europe/Moscow")
                     dt_moscow = dt.astimezone(moscow_tz)
                     ends_str = dt_moscow.strftime("%d.%m.%Y %H:%M")
-        else:
+                else:
                     ends_str = "—"
             except:
                 ends_str = ends_at[:10] if len(ends_at) >= 10 else ends_at
