@@ -683,6 +683,16 @@ def _require_admin(x_admin_token: str | None = Header(default=None)) -> None:
         raise HTTPException(status_code=403, detail="admin_forbidden")
 
 
+def _require_admin_or_web(request: Request, x_admin_token: str | None = Header(default=None, alias="X-Admin-Token")) -> dict:
+    """Проверка авторизации через токен (для бота) или веб-сессию (для админки)"""
+    # Сначала проверяем токен (для бота)
+    if x_admin_token and settings.admin_token and x_admin_token == settings.admin_token:
+        return {"tg_id": None, "username": "bot", "first_name": "Bot"}
+    
+    # Если токена нет или не совпадает, проверяем веб-сессию
+    return _require_web_admin(request)
+
+
 def _require_web_admin(request: Request) -> dict:
     """Проверка веб-авторизации через сессию"""
     session_data = request.session.get("admin_user")
@@ -1508,18 +1518,6 @@ async def list_payments(session: AsyncSession = Depends(get_session)) -> list[di
         }
         for p in pays
     ]
-
-
-def _require_admin_or_web(request: Request, x_admin_token: str | None = Header(default=None, alias="X-Admin-Token")) -> dict:
-    """Проверка авторизации через токен или веб-сессию"""
-    # Проверяем токен (для бота)
-    if x_admin_token and settings.admin_token and x_admin_token == settings.admin_token:
-        return {"authenticated": True}  # Авторизован через токен
-    # Проверяем веб-сессию (для веб-интерфейса)
-    session_data = request.session.get("admin_user")
-    if session_data:
-        return session_data  # Авторизован через веб-сессию
-    raise HTTPException(status_code=403, detail="not_authenticated")
 
 
 @app.get("/admin/payments")
