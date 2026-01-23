@@ -761,10 +761,22 @@ async def pay_stars_handler(callback: CallbackQuery, state: FSMContext) -> None:
     
     await callback.answer()
     await state.set_state(UserPayment.waiting_amount_stars)
+    
+    # Получаем минимальную сумму из настроек
+    settings = get_settings()
+    api = CoreApi(str(settings.core_api_base), admin_token=settings.admin_token or "")
+    min_amount_rub = 1.0
+    try:
+        bot_settings = await api.get_bot_settings()
+        if "min_topup_amount_rub" in bot_settings:
+            min_amount_rub = bot_settings["min_topup_amount_rub"]
+    except Exception:
+        pass
+    
     await callback.message.answer(
         "⭐ <b>Пополнение через Telegram Stars</b>\n\n"
-        "Введите количество Stars для пополнения (например: 1, 5, 10):\n"
-        "Минимум: 1 Star\n\n"
+        f"Введите количество Stars для пополнения (минимум эквивалент {min_amount_rub:.2f} RUB):\n"
+        "Например: 1, 5, 10\n\n"
         "💡 <i>Курс конвертации: Stars → USD → RUB (по актуальному курсу ЦБ РФ)</i>"
     )
 
@@ -779,23 +791,50 @@ async def process_stars_amount(message: Message, state: FSMContext) -> None:
         from core.currency import stars_to_rub
         from aiogram.types import LabeledPrice
         
+        # Получаем настройки минимальной/максимальной суммы
+        settings = get_settings()
+        api = CoreApi(str(settings.core_api_base), admin_token=settings.admin_token or "")
+        min_amount_rub = 1.0
+        max_amount_rub = None
+        
+        try:
+            bot_settings = await api.get_bot_settings()
+            if "min_topup_amount_rub" in bot_settings:
+                min_amount_rub = bot_settings["min_topup_amount_rub"]
+            if "max_topup_amount_rub" in bot_settings:
+                max_amount_rub = bot_settings["max_topup_amount_rub"]
+        except Exception:
+            pass  # Используем дефолтные значения
+        
         # Пользователь вводит количество Stars
         stars_amount = int(float(message.text.strip()))  # Принимаем целое число Stars
         
         if stars_amount < 1:
             await message.answer("❌ Минимальное количество: 1 Star")
             return
-        if stars_amount > 10000:
-            await message.answer("❌ Максимальное количество: 10000 Stars")
+        
+        # Конвертируем Stars в рубли через USD (без комиссии) для проверки минимальной/максимальной суммы
+        stars_amount_rub = await stars_to_rub(stars_amount=stars_amount)
+        
+        # Проверяем минимальную сумму в рублях
+        if stars_amount_rub < min_amount_rub:
+            await message.answer(
+                f"❌ Минимальная сумма пополнения: {min_amount_rub:.2f} RUB\n\n"
+                f"Введенное количество Stars эквивалентно {stars_amount_rub:.2f} RUB.\n"
+                f"Пожалуйста, введите больше Stars."
+            )
             return
         
-        # Конвертируем Stars в рубли через USD (без комиссии)
-        stars_amount_rub = await stars_to_rub(stars_amount=stars_amount)
-        amount_cents = int(stars_amount_rub * 100)  # Сохраняем эквивалент Stars в рублях (копейках)
+        # Проверяем максимальную сумму в рублях
+        if max_amount_rub and stars_amount_rub > max_amount_rub:
+            await message.answer(
+                f"❌ Максимальная сумма пополнения: {max_amount_rub:.2f} RUB\n\n"
+                f"Введенное количество Stars эквивалентно {stars_amount_rub:.2f} RUB.\n"
+                f"Пожалуйста, введите меньше Stars."
+            )
+            return
         
-        # Создаем платеж в системе с суммой, эквивалентной Stars
-        settings = get_settings()
-        api = CoreApi(str(settings.core_api_base), admin_token=settings.admin_token or "")
+        amount_cents = int(stars_amount_rub * 100)  # Сохраняем эквивалент Stars в рублях (копейках)
         payment_data = await api.create_payment(
             tg_id=message.from_user.id,
             amount_cents=amount_cents,
