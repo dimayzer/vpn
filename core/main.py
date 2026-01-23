@@ -648,6 +648,8 @@ if os.path.exists("core/static"):
     app.mount("/static", StaticFiles(directory="core/static"), name="static")
 
 
+
+
 # Обработчики для стандартных запросов (чтобы не было 404 в логах)
 @app.get("/")
 async def root():
@@ -861,9 +863,11 @@ def _require_csrf(request: Request) -> None:
 @app.exception_handler(StarletteHTTPException)
 async def starlette_http_exception_handler(request: Request, exc: StarletteHTTPException):
     """Обработка HTTP исключений от Starlette (включая 404)"""
+    import logging
     # Для 404 ошибок
     if exc.status_code == 404:
         path = request.url.path
+        logging.info(f"404 handler: path={path}")
         
         # Для API endpoints возвращаем JSON (только чистые API пути, без /admin/web)
         is_api_path = (
@@ -877,6 +881,8 @@ async def starlette_http_exception_handler(request: Request, exc: StarletteHTTPE
             path.startswith("/support/")
         )
         
+        logging.info(f"404 handler: is_api_path={is_api_path}, templates={templates is not None}")
+        
         if is_api_path:
             return JSONResponse(
                 status_code=404,
@@ -885,12 +891,14 @@ async def starlette_http_exception_handler(request: Request, exc: StarletteHTTPE
         
         # Для всех остальных путей (включая /admin/web/*) показываем красивую 404
         if templates:
+            logging.info(f"404 handler: returning 404.html template")
             return templates.TemplateResponse(
                 "404.html",
                 {"request": request},
                 status_code=404
             )
         # Если шаблоны не загружены, возвращаем простой текст
+        logging.info(f"404 handler: templates not loaded, returning simple HTML")
         return HTMLResponse(
             content="<h1>404 - Страница не найдена</h1><p><a href='/admin/login'>Перейти в админ-панель</a></p>",
             status_code=404
