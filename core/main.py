@@ -60,6 +60,7 @@ from core.db.models import (
     Server,
     ServerStatus,
     Backup,
+    VpnCredential,
 )
 from core.schemas import (
     PaymentCreateIn,
@@ -656,6 +657,25 @@ if os.path.exists("core/static"):
 async def root():
     """Корневой путь - редирект на админку"""
     return RedirectResponse(url="/admin/login", status_code=302)
+
+
+@app.get("/privacy", response_class=HTMLResponse)
+@app.get("/privacy-policy", response_class=HTMLResponse)
+async def privacy_policy(request: Request):
+    """Страница политики конфиденциальности"""
+    if not templates:
+        return HTMLResponse(content="<h1>Шаблоны не настроены</h1>", status_code=500)
+    
+    from datetime import datetime
+    last_updated = datetime.now().strftime("%d.%m.%Y")
+    
+    return templates.TemplateResponse(
+        "privacy.html",
+        {
+            "request": request,
+            "last_updated": last_updated,
+        }
+    )
 
 
 @app.get("/robots.txt")
