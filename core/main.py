@@ -8,6 +8,7 @@ import string
 from typing import Sequence
 from datetime import datetime
 import asyncio
+import logging
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
@@ -37,6 +38,8 @@ from sqlalchemy.orm import selectinload
 
 from core.config import get_settings
 from core.db.session import engine, get_session, SessionLocal, recreate_engine
+
+logger = logging.getLogger(__name__)
 from core.db.models import (
     Base,
     User,
@@ -506,22 +509,39 @@ async def lifespan(app: FastAPI):
             ("xray_reality_short_id", "VARCHAR(16)", ""),
             ("xray_path", "VARCHAR(255)", ""),
             ("xray_host", "VARCHAR(255)", ""),
+            ("x3ui_api_url", "VARCHAR(255)", ""),
+            ("x3ui_username", "VARCHAR(64)", ""),
+            ("x3ui_password", "VARCHAR(255)", ""),
+            ("x3ui_inbound_id", "INTEGER", ""),
         ]
         
-        for column_name, column_type, default in server_columns:
-            try:
-                result = await conn.execute(
-                    text(f"SELECT column_name FROM information_schema.columns WHERE table_name='servers' AND column_name='{column_name}'")
-                )
-                exists = result.scalar()
-                if not exists:
-                    default_clause = f" {default}" if default else ""
-                    await conn.execute(text(f"ALTER TABLE servers ADD COLUMN {column_name} {column_type}{default_clause}"))
-                    import logging
-                    logging.info(f"Added {column_name} column to servers table")
-            except Exception as e:
+        # Проверяем, существует ли таблица servers
+        try:
+            table_exists = await conn.execute(
+                text("SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name='servers')")
+            )
+            if not table_exists.scalar():
                 import logging
-                logging.warning(f"Could not add {column_name} column (may already exist): {e}")
+                logging.warning("Table 'servers' does not exist, skipping column migration")
+            else:
+                # Таблица существует, добавляем колонки
+                for column_name, column_type, default in server_columns:
+                    try:
+                        result = await conn.execute(
+                            text(f"SELECT column_name FROM information_schema.columns WHERE table_name='servers' AND column_name='{column_name}'")
+                        )
+                        exists = result.scalar()
+                        if not exists:
+                            default_clause = f" {default}" if default else ""
+                            await conn.execute(text(f"ALTER TABLE servers ADD COLUMN {column_name} {column_type}{default_clause}"))
+                            import logging
+                            logging.info(f"Added {column_name} column to servers table")
+                    except Exception as e:
+                        import logging
+                        logging.error(f"Error adding {column_name} column: {e}", exc_info=True)
+        except Exception as e:
+            import logging
+            logging.error(f"Error checking servers table: {e}", exc_info=True)
         
         # Проверяем и добавляем payment_status_changed
         try:
@@ -6772,7 +6792,9 @@ async def _generate_vpn_configs_for_user(user_id: int, session: AsyncSession, ex
     servers = await session.scalars(
         select(Server)
         .where(Server.is_enabled == True)
-        .where(Server.xray_uuid.isnot(None))
+        .where(
+            (Server.x3ui_api_url.isnot(None)) | (Server.xray_uuid.isnot(None))
+        )  # Сервер должен иметь либо API 3x-UI, либо UUID
     )
     servers_list = servers.all()
     
@@ -6782,9 +6804,6 @@ async def _generate_vpn_configs_for_user(user_id: int, session: AsyncSession, ex
     user = await session.get(User, user_id)
     if not user:
         return
-    
-    # Генерируем UUID для пользователя (если еще нет)
-    user_uuid = generate_uuid()
     
     # Создаем конфиги для каждого сервера
     for server in servers_list:
@@ -6796,45 +6815,80 @@ async def _generate_vpn_configs_for_user(user_id: int, session: AsyncSession, ex
             .where(VpnCredential.active == True)
         )
         
+        config_text = None
+        user_uuid = None
+        
+        # Если сервер использует API 3x-UI - создаем клиента автоматически
+        if server.x3ui_api_url and server.x3ui_username and server.x3ui_password and server.x3ui_inbound_id:
+            from core.x3ui_api import X3UIAPI
+            from core.xray import generate_uuid
+            
+            try:
+                x3ui = X3UIAPI(
+                    api_url=server.x3ui_api_url,
+                    username=server.x3ui_username,
+                    password=server.x3ui_password,
+                )
+                
+                # Генерируем уникальный email для клиента
+                client_email = f"user_{user_id}_server_{server.id}@fiorevpn"
+                
+                # Создаем клиента в 3x-UI
+                expire_timestamp = int(expires_at.timestamp()) if expires_at else 0
+                client_data = await x3ui.add_client(
+                    inbound_id=server.x3ui_inbound_id,
+                    email=client_email,
+                    uuid=None,  # Автоматическая генерация
+                    flow=server.xray_flow or "",
+                    expire=expire_timestamp,
+                )
+                
+                if client_data:
+                    # Получаем UUID созданного клиента
+                    user_uuid = client_data.get("id") or client_data.get("uuid")
+                    
+                    # Получаем конфиг через API (параметры берутся из Inbound автоматически)
+                    config_text = await x3ui.get_client_config(
+                        inbound_id=server.x3ui_inbound_id,
+                        email=client_email,
+                        server_host=server.host,
+                        server_port=server.xray_port,  # Если None, берется из Inbound
+                    )
+            except Exception as e:
+                logger.error(f"Ошибка при создании клиента через API 3x-UI: {e}")
+                continue
+        
+        # Если API 3x-UI не настроен, используем старый способ с UUID
+        elif server.xray_uuid:
+            user_uuid = server.xray_uuid
+            config_text = generate_vless_config(
+                user_uuid=user_uuid,
+                server_host=server.host,
+                server_port=server.xray_port or 443,
+                server_uuid=server.xray_uuid,
+                server_flow=server.xray_flow,
+                server_network=server.xray_network or "tcp",
+                server_security=server.xray_security or "tls",
+                server_sni=server.xray_sni,
+                server_reality_public_key=server.xray_reality_public_key,
+                server_reality_short_id=server.xray_reality_short_id,
+                server_path=server.xray_path,
+                server_host_header=server.xray_host,
+                remark=f"{server.name}",
+            )
+        else:
+            # Пропускаем серверы без настроек
+            continue
+        
+        if not config_text:
+            continue
+        
         if existing:
             # Обновляем существующий конфиг
             existing.expires_at = expires_at
-            # Перегенерируем конфиг с новыми параметрами
-            # Для gRPC используем xray_path как serviceName
-            config_text = generate_vless_config(
-                user_uuid=user_uuid,
-                server_host=server.host,
-                server_port=server.xray_port or 443,
-                server_uuid=server.xray_uuid,
-                server_flow=server.xray_flow,
-                server_network=server.xray_network or "tcp",
-                server_security=server.xray_security or "tls",
-                server_sni=server.xray_sni,
-                server_reality_public_key=server.xray_reality_public_key,
-                server_reality_short_id=server.xray_reality_short_id,
-                server_path=server.xray_path,  # Для gRPC это будет serviceName
-                server_host_header=server.xray_host,
-                remark=f"{server.name}",
-            )
             existing.config_text = config_text
         else:
             # Создаем новый конфиг
-            # Для gRPC используем xray_path как serviceName
-            config_text = generate_vless_config(
-                user_uuid=user_uuid,
-                server_host=server.host,
-                server_port=server.xray_port or 443,
-                server_uuid=server.xray_uuid,
-                server_flow=server.xray_flow,
-                server_network=server.xray_network or "tcp",
-                server_security=server.xray_security or "tls",
-                server_sni=server.xray_sni,
-                server_reality_public_key=server.xray_reality_public_key,
-                server_reality_short_id=server.xray_reality_short_id,
-                server_path=server.xray_path,  # Для gRPC это будет serviceName
-                server_host_header=server.xray_host,
-                remark=f"{server.name}",
-            )
             credential = VpnCredential(
                 user_id=user_id,
                 server_id=server.id,
@@ -6918,8 +6972,19 @@ async def admin_api_servers(
             "capacity": server.capacity,
             "created_at": server.created_at.isoformat(),
             "xray_port": server.xray_port,
+            "xray_uuid": server.xray_uuid,
+            "xray_flow": server.xray_flow,
             "xray_network": server.xray_network,
             "xray_security": server.xray_security,
+            "xray_sni": server.xray_sni,
+            "xray_reality_public_key": server.xray_reality_public_key,
+            "xray_reality_short_id": server.xray_reality_short_id,
+            "xray_path": server.xray_path,
+            "xray_host": server.xray_host,
+            "x3ui_api_url": server.x3ui_api_url,
+            "x3ui_username": server.x3ui_username,
+            "x3ui_password": server.x3ui_password,
+            "x3ui_inbound_id": server.x3ui_inbound_id,
         }
         if last_status:
             server_dict["status"] = {
@@ -6960,6 +7025,10 @@ async def admin_api_create_server(
         xray_reality_short_id=payload.xray_reality_short_id,
         xray_path=payload.xray_path,
         xray_host=payload.xray_host,
+        x3ui_api_url=payload.x3ui_api_url,
+        x3ui_username=payload.x3ui_username,
+        x3ui_password=payload.x3ui_password,
+        x3ui_inbound_id=payload.x3ui_inbound_id,
     )
     session.add(server)
     await session.commit()
@@ -7026,6 +7095,14 @@ async def admin_api_update_server(
         server.xray_path = payload.xray_path
     if payload.xray_host is not None:
         server.xray_host = payload.xray_host
+    if payload.x3ui_api_url is not None:
+        server.x3ui_api_url = payload.x3ui_api_url
+    if payload.x3ui_username is not None:
+        server.x3ui_username = payload.x3ui_username
+    if payload.x3ui_password is not None:
+        server.x3ui_password = payload.x3ui_password
+    if payload.x3ui_inbound_id is not None:
+        server.x3ui_inbound_id = payload.x3ui_inbound_id
     
     await session.commit()
     

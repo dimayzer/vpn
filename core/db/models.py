@@ -128,7 +128,7 @@ class Server(Base):
     
     # Xray-core (VLESS) настройки сервера
     xray_port: Mapped[int | None] = mapped_column(Integer, nullable=True, default=443)  # Порт Xray (обычно 443 для TLS)
-    xray_uuid: Mapped[str | None] = mapped_column(String(36), nullable=True)  # UUID сервера (для VLESS)
+    xray_uuid: Mapped[str | None] = mapped_column(String(36), nullable=True)  # UUID сервера (для VLESS) - устарело, используется API 3x-UI
     xray_flow: Mapped[str | None] = mapped_column(String(16), nullable=True)  # Flow control (xtls-rprx-vision, xtls-rprx-direct)
     xray_network: Mapped[str | None] = mapped_column(String(16), nullable=True, default="tcp")  # tcp, ws, grpc
     xray_security: Mapped[str | None] = mapped_column(String(16), nullable=True, default="tls")  # none, tls, reality
@@ -137,6 +137,12 @@ class Server(Base):
     xray_reality_short_id: Mapped[str | None] = mapped_column(String(16), nullable=True)  # Short ID для Reality
     xray_path: Mapped[str | None] = mapped_column(String(255), nullable=True)  # Path для WebSocket/gRPC
     xray_host: Mapped[str | None] = mapped_column(String(255), nullable=True)  # Host header для WebSocket
+    
+    # 3x-UI API настройки для автоматического управления клиентами
+    x3ui_api_url: Mapped[str | None] = mapped_column(String(255), nullable=True)  # URL API 3x-UI (например: http://ip:2053/api/v1)
+    x3ui_username: Mapped[str | None] = mapped_column(String(64), nullable=True)  # Username для API 3x-UI
+    x3ui_password: Mapped[str | None] = mapped_column(String(255), nullable=True)  # Password для API 3x-UI
+    x3ui_inbound_id: Mapped[int | None] = mapped_column(Integer, nullable=True)  # ID Inbound в 3x-UI
 
     credentials: Mapped[list["VpnCredential"]] = relationship("VpnCredential", back_populates="server")
 

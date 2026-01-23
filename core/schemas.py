@@ -125,6 +125,10 @@ class ServerCreateIn(BaseModel):
     xray_reality_short_id: str | None = None
     xray_path: str | None = None
     xray_host: str | None = None
+    x3ui_api_url: str | None = None
+    x3ui_username: str | None = None
+    x3ui_password: str | None = None
+    x3ui_inbound_id: int | None = None
 
 
 class ServerUpdateIn(BaseModel):
@@ -144,6 +148,10 @@ class ServerUpdateIn(BaseModel):
     xray_reality_short_id: str | None = None
     xray_path: str | None = None
     xray_host: str | None = None
+    x3ui_api_url: str | None = None
+    x3ui_username: str | None = None
+    x3ui_password: str | None = None
+    x3ui_inbound_id: int | None = None
 
 
 class ServerOut(BaseModel):
@@ -165,5 +173,9 @@ class ServerOut(BaseModel):
     xray_reality_short_id: str | None = None
     xray_path: str | None = None
     xray_host: str | None = None
+    x3ui_api_url: str | None = None
+    x3ui_username: str | None = None
+    x3ui_password: str | None = None  # Обычно не возвращаем пароль в API, но для админки можно
+    x3ui_inbound_id: int | None = None
     status: dict | None = None  # Последний статус сервера
 
