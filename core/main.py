@@ -20,6 +20,7 @@ from fastapi.responses import StreamingResponse, HTMLResponse, RedirectResponse,
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
+from starlette.exceptions import HTTPException as StarletteHTTPException
 # Временно отключено из-за проблем с Pydantic
 # from slowapi import Limiter, _rate_limit_exceeded_handler
 # from slowapi.util import get_remote_address
@@ -857,9 +858,43 @@ def _require_csrf(request: Request) -> None:
         raise HTTPException(status_code=403, detail="csrf_forbidden")
 
 
+@app.exception_handler(StarletteHTTPException)
+async def starlette_http_exception_handler(request: Request, exc: StarletteHTTPException):
+    """Обработка HTTP исключений от Starlette (включая 404)"""
+    # Для 404 ошибок
+    if exc.status_code == 404:
+        # Для API endpoints возвращаем JSON
+        if (request.url.path.startswith("/api/") or 
+            request.url.path.startswith("/subscriptions/") or 
+            request.url.path.startswith("/payments/") or 
+            request.url.path.startswith("/users/") or 
+            request.url.path.startswith("/promo-codes/") or
+            request.url.path.startswith("/tickets/") or
+            request.url.path.startswith("/health")):
+            return JSONResponse(
+                status_code=404,
+                content={"detail": "Not found"}
+            )
+        # Для веб-страниц показываем красивую 404
+        if templates:
+            return templates.TemplateResponse(
+                "404.html",
+                {"request": request},
+                status_code=404
+            )
+        # Если шаблоны не загружены, возвращаем простой текст
+        return HTMLResponse(
+            content="<h1>404 - Страница не найдена</h1><p><a href='/admin/login'>Перейти в админ-панель</a></p>",
+            status_code=404
+        )
+    
+    # Для других HTTP ошибок от Starlette пробрасываем дальше
+    raise exc
+
+
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request: Request, exc: HTTPException):
-    """Обработка HTTP исключений"""
+    """Обработка HTTP исключений от FastAPI"""
     if exc.status_code == 403:
         # Для веб-интерфейса - редирект на логин
         if request.url.path.startswith("/admin/web"):
@@ -877,29 +912,6 @@ async def http_exception_handler(request: Request, exc: HTTPException):
         )
     # Для веб-страниц пробрасываем исключение дальше
     raise exc
-
-
-@app.exception_handler(404)
-async def not_found_handler(request: Request, exc: HTTPException):
-    """Обработка 404 ошибок - красивая страница"""
-    # Для API endpoints возвращаем JSON
-    if request.url.path.startswith("/api/") or request.url.path.startswith("/subscriptions/") or request.url.path.startswith("/payments/") or request.url.path.startswith("/users/") or request.url.path.startswith("/promo-codes/"):
-        return JSONResponse(
-            status_code=404,
-            content={"detail": "Not found"}
-        )
-    # Для веб-страниц показываем красивую 404
-    if templates:
-        return templates.TemplateResponse(
-            "404.html",
-            {"request": request},
-            status_code=404
-        )
-    # Если шаблоны не загружены, возвращаем простой текст
-    return HTMLResponse(
-        content="<h1>404 - Страница не найдена</h1><p><a href='/admin/login'>Перейти в админ-панель</a></p>",
-        status_code=404
-    )
 
 
 def _gen_ref_code() -> str:
@@ -6491,4 +6503,32 @@ async def admin_web_restore_backup(
     asyncio.create_task(_restore_database_backup(backup_id, restored_by_tg_id=admin_user.get("tg_id")))
     
     return JSONResponse({"success": True, "message": "Восстановление запущено. Это может занять несколько минут."})
+
+
+# Catch-all роут для всех необработанных путей (должен быть последним)
+@app.get("/{path:path}")
+async def catch_all(request: Request, path: str):
+    """Перехватывает все необработанные GET запросы и показывает 404"""
+    # Для API endpoints возвращаем JSON
+    if (request.url.path.startswith("/api/") or 
+        request.url.path.startswith("/subscriptions/") or 
+        request.url.path.startswith("/payments/") or 
+        request.url.path.startswith("/users/") or 
+        request.url.path.startswith("/promo-codes/") or
+        request.url.path.startswith("/tickets/") or
+        request.url.path.startswith("/health")):
+        raise HTTPException(status_code=404, detail="Not found")
+    
+    # Для веб-страниц показываем красивую 404
+    if templates:
+        return templates.TemplateResponse(
+            "404.html",
+            {"request": request},
+            status_code=404
+        )
+    # Если шаблоны не загружены, возвращаем простой текст
+    return HTMLResponse(
+        content="<h1>404 - Страница не найдена</h1><p><a href='/admin/login'>Перейти в админ-панель</a></p>",
+        status_code=404
+    )
 
