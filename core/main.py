@@ -5296,7 +5296,20 @@ async def admin_web_ticket_detail(
         .limit(page_size)
         .offset((page - 1) * page_size)
     )
-    messages = result.all()
+    messages_raw = result.all()
+    
+    # Преобразуем messages в словари с правильным direction (строка вместо enum)
+    messages = []
+    for m in messages_raw:
+        messages.append({
+            "id": m.id,
+            "created_at": fmt(m.created_at),
+            "direction": m.direction.value if hasattr(m.direction, "value") else str(m.direction),
+            "user_tg_id": m.user_tg_id,
+            "admin_tg_id": m.admin_tg_id,
+            "text": m.text,
+        })
+    
     has_next = (page * page_size) < (total_messages or 0)
     has_prev = page > 1
 
