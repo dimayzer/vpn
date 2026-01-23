@@ -16,7 +16,7 @@ from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Header, Request
-from fastapi.responses import StreamingResponse, HTMLResponse, RedirectResponse, JSONResponse
+from fastapi.responses import StreamingResponse, HTMLResponse, RedirectResponse, JSONResponse, Response
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
@@ -645,6 +645,34 @@ else:
 # Подключение статических файлов
 if os.path.exists("core/static"):
     app.mount("/static", StaticFiles(directory="core/static"), name="static")
+
+
+# Обработчики для стандартных запросов (чтобы не было 404 в логах)
+@app.get("/")
+async def root():
+    """Корневой путь - редирект на админку"""
+    return RedirectResponse(url="/admin/login", status_code=302)
+
+
+@app.get("/robots.txt")
+async def robots_txt():
+    """Robots.txt для поисковых ботов"""
+    return Response(
+        content="User-agent: *\nDisallow: /\n",
+        media_type="text/plain"
+    )
+
+
+@app.get("/favicon.ico")
+async def favicon_ico():
+    """Favicon - возвращаем 204 No Content"""
+    return Response(status_code=204)
+
+
+@app.get("/favicon.png")
+async def favicon_png():
+    """Favicon PNG - возвращаем 204 No Content"""
+    return Response(status_code=204)
 
 
 def _require_admin(x_admin_token: str | None = Header(default=None)) -> None:
