@@ -295,7 +295,7 @@
                                     <span class="info-label">Протокол:</span>
                                     <span>{{ server.xray_network or 'tcp' }} / {{ server.xray_security or 'tls' }}</span>
                                 </div>
-                                {% if status and status.response_time_ms %}
+                                {% if status and status.response_time_ms is not none %}
                                 <div class="info-row">
                                     <span class="info-label">Время отклика:</span>
                                     <span>{{ status.response_time_ms }} мс</span>
@@ -312,12 +312,18 @@
                                 <span id="last-check-{{ server.id }}" data-checked-at="{{ status.checked_at.isoformat() if status.checked_at else '' }}">
                                     {% if status.checked_at %}
                                         <script>
+                                            // Форматируем время при загрузке страницы
                                             (function() {
-                                                const el = document.getElementById('last-check-{{ server.id }}');
-                                                if (el) {
-                                                    const date = new Date('{{ status.checked_at.isoformat() }}');
-                                                    date.setHours(date.getHours() + 3); // MSK = UTC+3
-                                                    el.textContent = date.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                                                try {
+                                                    const el = document.getElementById('last-check-{{ server.id }}');
+                                                    if (el && el.dataset.checkedAt) {
+                                                        const date = new Date(el.dataset.checkedAt);
+                                                        // Время уже в UTC из базы данных, добавляем 3 часа для MSK (UTC+3)
+                                                        date.setHours(date.getHours() + 3);
+                                                        el.textContent = date.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                                                    }
+                                                } catch (e) {
+                                                    console.error('Ошибка при форматировании времени:', e);
                                                 }
                                             })();
                                         </script>
@@ -462,23 +468,45 @@
                         return;
                     }
                     document.getElementById('modalTitle').textContent = 'Редактировать сервер';
-                    document.getElementById('serverId').value = server.id;
-                    document.getElementById('name').value = server.name || '';
-                    document.getElementById('host').value = server.host || '';
-                    document.getElementById('location').value = server.location || '';
-                    document.getElementById('xray_port').value = server.xray_port || 443;
-                    document.getElementById('xray_uuid').value = server.xray_uuid || '';
-                    document.getElementById('xray_network').value = server.xray_network || 'tcp';
-                    document.getElementById('xray_security').value = server.xray_security || 'tls';
-                    document.getElementById('xray_sni').value = server.xray_sni || '';
-                    document.getElementById('xray_reality_public_key').value = server.xray_reality_public_key || '';
-                    document.getElementById('xray_reality_short_id').value = server.xray_reality_short_id || '';
-                    document.getElementById('xray_path').value = server.xray_path || '';
-                    document.getElementById('xray_host').value = server.xray_host || '';
-                    document.getElementById('x3ui_api_url').value = server.x3ui_api_url || '';
-                    document.getElementById('x3ui_username').value = server.x3ui_username || '';
-                    document.getElementById('x3ui_password').value = server.x3ui_password || '';
-                    document.getElementById('x3ui_inbound_id').value = server.x3ui_inbound_id || '';
+                    
+                    // Безопасная установка значений с проверкой существования элементов
+                    const setValue = (id, value) => {
+                        const el = document.getElementById(id);
+                        if (!el) {
+                            console.warn(`Элемент с id="${id}" не найден`);
+                            return;
+                        }
+                        try {
+                            if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') {
+                                el.value = (value != null && value !== undefined) ? String(value) : '';
+                            } else if (el.tagName === 'SELECT') {
+                                el.value = (value != null && value !== undefined) ? String(value) : '';
+                            } else {
+                                console.warn(`Неизвестный тип элемента для id="${id}": ${el.tagName}`);
+                            }
+                        } catch (e) {
+                            console.error(`Ошибка при установке значения для id="${id}":`, e);
+                        }
+                    };
+                    
+                    setValue('serverId', server.id);
+                    setValue('name', server.name);
+                    setValue('host', server.host);
+                    setValue('location', server.location);
+                    setValue('xray_port', server.xray_port || 443);
+                    setValue('xray_uuid', server.xray_uuid);
+                    setValue('xray_network', server.xray_network || 'tcp');
+                    setValue('xray_security', server.xray_security || 'tls');
+                    setValue('xray_sni', server.xray_sni);
+                    setValue('xray_reality_public_key', server.xray_reality_public_key);
+                    setValue('xray_reality_short_id', server.xray_reality_short_id);
+                    setValue('xray_path', server.xray_path);
+                    setValue('xray_host', server.xray_host);
+                    setValue('x3ui_api_url', server.x3ui_api_url);
+                    setValue('x3ui_username', server.x3ui_username);
+                    setValue('x3ui_password', server.x3ui_password);
+                    setValue('x3ui_inbound_id', server.x3ui_inbound_id);
+                    
                     document.getElementById('serverModal').style.display = 'block';
                 })
                 .catch(err => {
@@ -595,11 +623,32 @@
                             statusEl.textContent = server.status.is_online ? '🟢 Онлайн' : '🔴 Оффлайн';
                             
                             const lastCheckEl = document.getElementById(`last-check-${server.id}`);
-                            if (lastCheckEl && server.status.checked_at) {
-                                const date = new Date(server.status.checked_at);
-                                // Добавляем 3 часа для московского времени (UTC+3)
-                                date.setHours(date.getHours() + 3);
-                                lastCheckEl.textContent = date.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                            if (lastCheckEl && server.status && server.status.checked_at) {
+                                try {
+                                    const date = new Date(server.status.checked_at);
+                                    // Время уже в UTC из API, добавляем 3 часа для MSK (UTC+3)
+                                    date.setHours(date.getHours() + 3);
+                                    lastCheckEl.textContent = date.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                                } catch (e) {
+                                    console.error('Ошибка при форматировании времени:', e);
+                                }
+                            }
+                            
+                            // Обновляем время отклика если есть
+                            if (server.status && server.status.response_time_ms != null) {
+                                const serverCard = document.querySelector(`[data-server-id="${server.id}"]`);
+                                if (serverCard) {
+                                    const responseTimeRows = serverCard.querySelectorAll('.info-row');
+                                    responseTimeRows.forEach(row => {
+                                        const label = row.querySelector('.info-label');
+                                        if (label && label.textContent.includes('Время отклика')) {
+                                            const valueSpan = row.querySelector('span:last-child');
+                                            if (valueSpan) {
+                                                valueSpan.textContent = `${server.status.response_time_ms} мс`;
+                                            }
+                                        }
+                                    });
+                                }
                             }
                         }
                     });

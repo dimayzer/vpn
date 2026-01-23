@@ -91,14 +91,21 @@ settings = get_settings()
 def _check_port_sync(host: str, port: int, timeout: int = 5) -> bool:
     """Синхронная проверка доступности порта"""
     import socket
+    sock = None
     try:
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.settimeout(timeout)
         result = sock.connect_ex((host, port))
-        sock.close()
         return result == 0
-    except Exception:
+    except Exception as e:
+        logger.debug(f"Ошибка при проверке порта {host}:{port}: {e}")
         return False
+    finally:
+        if sock:
+            try:
+                sock.close()
+            except Exception:
+                pass
 
 
 async def _check_server_status(server: Server) -> dict:
@@ -109,6 +116,8 @@ async def _check_server_status(server: Server) -> dict:
     port = server.xray_port or 443
     host = server.host
     
+    logger.debug(f"Проверка сервера {server.name} ({host}:{port})")
+    
     try:
         start_time = time.time()
         loop = asyncio.get_event_loop()
@@ -118,12 +127,16 @@ async def _check_server_status(server: Server) -> dict:
         )
         response_time_ms = int((time.time() - start_time) * 1000)
         
+        logger.debug(f"Результат проверки {server.name}: online={is_online}, time={response_time_ms}ms")
+        
+        # Всегда возвращаем response_time_ms для диагностики
         return {
             "is_online": is_online,
-            "response_time_ms": response_time_ms if is_online else None,
-            "error_message": None if is_online else f"Port {port} unreachable",
+            "response_time_ms": response_time_ms,  # Показываем время даже при ошибке
+            "error_message": None if is_online else f"Port {port} unreachable (timeout: {response_time_ms}ms)",
         }
     except Exception as e:
+        logger.error(f"Ошибка при проверке сервера {server.name}: {e}")
         return {
             "is_online": False,
             "response_time_ms": None,
@@ -7004,13 +7017,11 @@ async def admin_api_servers(
             "x3ui_inbound_id": server.x3ui_inbound_id,
         }
         if last_status:
-            # Добавляем 3 часа для московского времени (UTC+3)
-            from datetime import timedelta
-            checked_at_msk = last_status.checked_at + timedelta(hours=3) if last_status.checked_at else None
+            # Время уже в UTC, на клиенте добавим +3 часа через JavaScript
             server_dict["status"] = {
                 "is_online": last_status.is_online,
                 "response_time_ms": last_status.response_time_ms,
-                "checked_at": checked_at_msk.isoformat() if checked_at_msk else None,
+                "checked_at": last_status.checked_at.isoformat() if last_status.checked_at else None,
             }
         servers_list.append(server_dict)
     
@@ -7191,10 +7202,7 @@ async def admin_api_check_server(
     session.add(status)
     await session.commit()
     
-    # Добавляем 3 часа для московского времени (UTC+3)
-    from datetime import timedelta
-    checked_at_msk = status.checked_at + timedelta(hours=3) if status.checked_at else None
-    
+    # Время уже в UTC, на клиенте добавим +3 часа через JavaScript
     return {
         "server_id": server.id,
         "server_name": server.name,
@@ -7202,7 +7210,7 @@ async def admin_api_check_server(
             "is_online": status_result["is_online"],
             "response_time_ms": status_result["response_time_ms"],
             "error_message": status_result["error_message"],
-            "checked_at": checked_at_msk.isoformat() if checked_at_msk else None,
+            "checked_at": status.checked_at.isoformat() if status.checked_at else None,
         }
     }
 
