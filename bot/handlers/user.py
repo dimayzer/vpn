@@ -37,6 +37,8 @@ async def start(message: Message) -> None:
         if len(parts) == 2:
             referral_code = parts[1].strip() or None
 
+    welcome_message = "Привет! Это fioreVPN бот.\n\n— Посмотреть тарифы и купить подписку\n— Узнать статус и срок действия\n— Получить конфиг/QR после оплаты\n\nВыберите действие:"
+    
     try:
         settings = get_settings()
         api = CoreApi(str(settings.core_api_base), admin_token=settings.admin_token or "")
@@ -48,17 +50,20 @@ async def start(message: Message) -> None:
                 last_name=message.from_user.last_name,
                 referral_code=referral_code
             )
+        # Получаем настройки бота
+        try:
+            bot_settings = await api.get_bot_settings()
+            if bot_settings.get("welcome_message"):
+                welcome_message = bot_settings["welcome_message"]
+        except Exception:
+            pass  # Используем дефолтное сообщение
     except Exception:
         # core может быть недоступен, не блокируем старт
         pass
 
     is_admin = bool(message.from_user) and message.from_user.id in set(get_settings().admin_ids)
     await message.answer(
-        "Привет! Это fioreVPN бот.\n\n"
-        "— Посмотреть тарифы и купить подписку\n"
-        "— Узнать статус и срок действия\n"
-        "— Получить конфиг/QR после оплаты\n\n"
-        "Выберите действие:",
+        welcome_message,
         reply_markup=user_menu(is_admin=is_admin),
     )
 
@@ -101,7 +106,22 @@ async def status(message: Message) -> None:
 
 @router.message(Command("help"))
 async def help_cmd(message: Message) -> None:
-    await message.answer("Поддержка: @your_support\nFAQ: скоро добавим.\nКоманды: /start /plans /status")
+    help_message = "Поддержка: @your_support\nFAQ: скоро добавим.\nКоманды: /start /plans /status"
+    
+    try:
+        settings = get_settings()
+        api = CoreApi(str(settings.core_api_base), admin_token=settings.admin_token or "")
+        # Получаем настройки бота
+        try:
+            bot_settings = await api.get_bot_settings()
+            if bot_settings.get("help_message"):
+                help_message = bot_settings["help_message"]
+        except Exception:
+            pass  # Используем дефолтное сообщение
+    except Exception:
+        pass  # Используем дефолтное сообщение
+    
+    await message.answer(help_message)
 
 
 @router.message(F.text == BTN_STATUS)
@@ -862,9 +882,22 @@ async def crypto_currency_handler(callback: CallbackQuery, state: FSMContext) ->
     await callback.answer()
     await state.update_data(crypto_currency=currency)
     await state.set_state(UserPayment.waiting_amount_crypto)
+    
+    # Получаем минимальную сумму из настроек
+    settings = get_settings()
+    api = CoreApi(str(settings.core_api_base), admin_token=settings.admin_token or "")
+    min_amount_rub = 1.0
+    try:
+        bot_settings = await api.get_bot_settings()
+        if "min_topup_amount_rub" in bot_settings:
+            min_amount_rub = bot_settings["min_topup_amount_rub"]
+    except Exception:
+        pass
+    
     await callback.message.answer(
         f"₿ <b>Пополнение через {currency}</b>\n\n"
-        "Введите сумму пополнения в рублях (например: 100 или 50.50):"
+        f"Введите сумму пополнения в рублях (минимум: {min_amount_rub:.2f} RUB):\n"
+        "Например: 100 или 50.50"
     )
 
 
@@ -881,10 +914,24 @@ async def process_crypto_amount(message: Message, state: FSMContext) -> None:
         from core.currency import get_usd_to_rub_rate
         
         amount_rub = float(message.text.strip())
-        # Минимум должен быть эквивалентен 0.01 USD (примерно 1 RUB при курсе 100 RUB = 1 USD)
-        # Но для надежности устанавливаем минимум 1 RUB
-        if amount_rub < 1:
-            await message.answer("❌ Минимальная сумма пополнения: 1 RUB")
+        
+        # Получаем настройки минимальной/максимальной суммы
+        settings = get_settings()
+        api = CoreApi(str(settings.core_api_base), admin_token=settings.admin_token or "")
+        min_amount_rub = 1.0
+        max_amount_rub = 1000000.0
+        
+        try:
+            bot_settings = await api.get_bot_settings()
+            if "min_topup_amount_rub" in bot_settings:
+                min_amount_rub = bot_settings["min_topup_amount_rub"]
+            if "max_topup_amount_rub" in bot_settings:
+                max_amount_rub = bot_settings["max_topup_amount_rub"]
+        except Exception:
+            pass  # Используем дефолтные значения
+        
+        if amount_rub < min_amount_rub:
+            await message.answer(f"❌ Минимальная сумма пополнения: {min_amount_rub:.2f} RUB")
             return
         # Проверяем, что сумма в USD будет >= 0.01 USD (требование CryptoBot)
         # При курсе 100 RUB = 1 USD, 1 RUB = 0.01 USD, что соответствует минимуму
@@ -896,8 +943,8 @@ async def process_crypto_amount(message: Message, state: FSMContext) -> None:
                 "Попробуйте ввести сумму от 2 RUB."
             )
             return
-        if amount_rub > 1000000:
-            await message.answer("❌ Максимальная сумма пополнения: 1000000 RUB")
+        if max_amount_rub and amount_rub > max_amount_rub:
+            await message.answer(f"❌ Максимальная сумма пополнения: {max_amount_rub:.2f} RUB")
             return
         
         # Сохраняем сумму в рублях (копейках) - без конвертации в USD

@@ -5868,6 +5868,44 @@ async def admin_web_update_settings(
         return RedirectResponse(url=f"/admin/web/settings?error={str(e)}", status_code=303)
 
 
+@app.get("/settings/bot")
+async def get_bot_settings(
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    """Получить настройки бота (публичный endpoint)"""
+    settings_result = await session.scalars(
+        select(SystemSetting).where(
+            SystemSetting.key.in_([
+                "bot_welcome_message",
+                "bot_help_message",
+                "min_topup_amount_cents",
+                "max_topup_amount_cents",
+            ])
+        )
+    )
+    settings_list = settings_result.all()
+    settings_dict = {s.key: s.value for s in settings_list}
+    
+    # Конвертируем суммы из копеек в рубли для удобства
+    result = {}
+    if "bot_welcome_message" in settings_dict:
+        result["welcome_message"] = settings_dict["bot_welcome_message"]
+    if "bot_help_message" in settings_dict:
+        result["help_message"] = settings_dict["bot_help_message"]
+    if "min_topup_amount_cents" in settings_dict:
+        try:
+            result["min_topup_amount_rub"] = float(settings_dict["min_topup_amount_cents"]) / 100
+        except (ValueError, TypeError):
+            result["min_topup_amount_rub"] = 1.0
+    if "max_topup_amount_cents" in settings_dict:
+        try:
+            result["max_topup_amount_rub"] = float(settings_dict["max_topup_amount_cents"]) / 100
+        except (ValueError, TypeError):
+            pass
+    
+    return result
+
+
 @app.get("/admin/web/subscription-plans", response_class=HTMLResponse)
 async def admin_web_subscription_plans(
     request: Request,

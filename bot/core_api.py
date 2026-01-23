@@ -236,4 +236,12 @@ class CoreApi:
             r.raise_for_status()
             return r.json()
 
+    async def get_bot_settings(self) -> dict[str, Any]:
+        """Получить настройки бота"""
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            r = await client.get(f"{self._base_url}/settings/bot")
+            r.raise_for_status()
+            data = r.json()
+            return data if isinstance(data, dict) else {}
+
 
