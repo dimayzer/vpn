@@ -19,91 +19,262 @@
             align-items: center;
             justify-content: center;
             padding: 20px;
+            overflow: hidden;
+            position: relative;
+        }
+        
+        /* Анимированный фон */
+        body::before {
+            content: '';
+            position: absolute;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(circle, rgba(255,255,255,0.1) 1px, transparent 1px);
+            background-size: 50px 50px;
+            animation: moveBackground 20s linear infinite;
+            top: -50%;
+            left: -50%;
+        }
+        
+        @keyframes moveBackground {
+            0% { transform: translate(0, 0); }
+            100% { transform: translate(50px, 50px); }
         }
         
         .container {
-            background: white;
-            border-radius: 20px;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-            padding: 60px 40px;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 30px;
+            box-shadow: 0 30px 80px rgba(0,0,0,0.3);
+            padding: 80px 60px;
             text-align: center;
-            max-width: 600px;
+            max-width: 700px;
             width: 100%;
+            position: relative;
+            z-index: 1;
+            animation: fadeInUp 0.8s ease-out;
+        }
+        
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
         }
         
         .error-code {
-            font-size: 120px;
-            font-weight: 700;
+            font-size: 150px;
+            font-weight: 800;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             background-clip: text;
             line-height: 1;
             margin-bottom: 20px;
+            position: relative;
+            animation: float 3s ease-in-out infinite;
+            text-shadow: 0 0 40px rgba(102, 126, 234, 0.3);
+        }
+        
+        @keyframes float {
+            0%, 100% { transform: translateY(0px); }
+            50% { transform: translateY(-20px); }
+        }
+        
+        .error-code::after {
+            content: '404';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            opacity: 0.2;
+            filter: blur(20px);
+            z-index: -1;
+            animation: pulse 2s ease-in-out infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); opacity: 0.2; }
+            50% { transform: scale(1.1); opacity: 0.3; }
         }
         
         h1 {
-            font-size: 32px;
+            font-size: 36px;
             color: #333;
-            margin-bottom: 15px;
+            margin-bottom: 20px;
+            animation: fadeIn 1s ease-out 0.3s both;
+            font-weight: 600;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
         }
         
         p {
             font-size: 18px;
             color: #666;
-            margin-bottom: 30px;
-            line-height: 1.6;
+            margin-bottom: 40px;
+            line-height: 1.8;
+            animation: fadeIn 1s ease-out 0.5s both;
         }
         
-        .btn {
+        .illustration {
+            width: 200px;
+            height: 200px;
+            margin: 40px auto;
+            position: relative;
+            animation: fadeIn 1s ease-out 0.7s both;
+        }
+        
+        .circle {
+            position: absolute;
+            border-radius: 50%;
+            border: 3px solid #667eea;
+            animation: rotate 10s linear infinite;
+        }
+        
+        .circle:nth-child(1) {
+            width: 200px;
+            height: 200px;
+            top: 0;
+            left: 0;
+            border-color: #667eea;
+            animation-duration: 15s;
+        }
+        
+        .circle:nth-child(2) {
+            width: 150px;
+            height: 150px;
+            top: 25px;
+            left: 25px;
+            border-color: #764ba2;
+            animation-duration: 12s;
+            animation-direction: reverse;
+        }
+        
+        .circle:nth-child(3) {
+            width: 100px;
+            height: 100px;
+            top: 50px;
+            left: 50px;
+            border-color: #667eea;
+            animation-duration: 8s;
+        }
+        
+        @keyframes rotate {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+        
+        .home-link {
             display: inline-block;
-            padding: 14px 28px;
+            padding: 16px 40px;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
             text-decoration: none;
-            border-radius: 10px;
+            border-radius: 50px;
             font-weight: 600;
             font-size: 16px;
-            transition: transform 0.2s, box-shadow 0.2s;
-            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+            transition: all 0.3s ease;
+            box-shadow: 0 8px 25px rgba(102, 126, 234, 0.4);
+            animation: fadeIn 1s ease-out 0.9s both;
+            position: relative;
+            overflow: hidden;
         }
         
-        .btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.5);
+        .home-link::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 0;
+            height: 0;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.3);
+            transform: translate(-50%, -50%);
+            transition: width 0.6s, height 0.6s;
         }
         
-        .btn:active {
-            transform: translateY(0);
+        .home-link:hover::before {
+            width: 300px;
+            height: 300px;
         }
         
-        .links {
-            margin-top: 30px;
-            display: flex;
-            gap: 15px;
-            justify-content: center;
-            flex-wrap: wrap;
+        .home-link:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 12px 35px rgba(102, 126, 234, 0.5);
         }
         
-        .link {
-            color: #667eea;
-            text-decoration: none;
-            font-size: 14px;
-            transition: color 0.2s;
+        .home-link:active {
+            transform: translateY(-1px);
         }
         
-        .link:hover {
-            color: #764ba2;
-            text-decoration: underline;
+        .home-link span {
+            position: relative;
+            z-index: 1;
+        }
+        
+        .particles {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            top: 0;
+            left: 0;
+            overflow: hidden;
+            z-index: 0;
+        }
+        
+        .particle {
+            position: absolute;
+            width: 4px;
+            height: 4px;
+            background: rgba(255, 255, 255, 0.5);
+            border-radius: 50%;
+            animation: floatParticle 15s infinite;
+        }
+        
+        .particle:nth-child(1) { left: 10%; animation-delay: 0s; }
+        .particle:nth-child(2) { left: 20%; animation-delay: 2s; }
+        .particle:nth-child(3) { left: 30%; animation-delay: 4s; }
+        .particle:nth-child(4) { left: 40%; animation-delay: 6s; }
+        .particle:nth-child(5) { left: 50%; animation-delay: 8s; }
+        .particle:nth-child(6) { left: 60%; animation-delay: 10s; }
+        .particle:nth-child(7) { left: 70%; animation-delay: 12s; }
+        .particle:nth-child(8) { left: 80%; animation-delay: 14s; }
+        
+        @keyframes floatParticle {
+            0% {
+                transform: translateY(100vh) scale(0);
+                opacity: 0;
+            }
+            10% {
+                opacity: 1;
+            }
+            90% {
+                opacity: 1;
+            }
+            100% {
+                transform: translateY(-100px) scale(1);
+                opacity: 0;
+            }
         }
         
         @media (max-width: 600px) {
             .error-code {
-                font-size: 80px;
+                font-size: 100px;
             }
             
             h1 {
-                font-size: 24px;
+                font-size: 28px;
             }
             
             p {
@@ -111,22 +282,61 @@
             }
             
             .container {
-                padding: 40px 20px;
+                padding: 50px 30px;
+            }
+            
+            .illustration {
+                width: 150px;
+                height: 150px;
+            }
+            
+            .circle:nth-child(1) {
+                width: 150px;
+                height: 150px;
+            }
+            
+            .circle:nth-child(2) {
+                width: 110px;
+                height: 110px;
+                top: 20px;
+                left: 20px;
+            }
+            
+            .circle:nth-child(3) {
+                width: 70px;
+                height: 70px;
+                top: 40px;
+                left: 40px;
             }
         }
     </style>
 </head>
 <body>
+    <div class="particles">
+        <div class="particle"></div>
+        <div class="particle"></div>
+        <div class="particle"></div>
+        <div class="particle"></div>
+        <div class="particle"></div>
+        <div class="particle"></div>
+        <div class="particle"></div>
+        <div class="particle"></div>
+    </div>
+    
     <div class="container">
         <div class="error-code">404</div>
         <h1>Страница не найдена</h1>
         <p>К сожалению, запрашиваемая страница не существует или была перемещена.</p>
-        <a href="/admin/login" class="btn">Перейти в админ-панель</a>
-        <div class="links">
-            <a href="/admin/login" class="link">Вход</a>
-            <a href="/health" class="link">Статус API</a>
+        
+        <div class="illustration">
+            <div class="circle"></div>
+            <div class="circle"></div>
+            <div class="circle"></div>
         </div>
+        
+        <a href="/" class="home-link">
+            <span>Вернуться на главную</span>
+        </a>
     </div>
 </body>
 </html>
-
