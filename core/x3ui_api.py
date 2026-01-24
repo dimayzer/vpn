@@ -79,7 +79,43 @@ class X3UIAPI:
             self._session = httpx.AsyncClient(timeout=15.0, follow_redirects=True, verify=verify_ssl)
         
         login_endpoint = f"{self.base_url}/login"
-        logger.info(f"Авторизация в 3x-UI: {login_endpoint}")
+        logger.info(f"Авторизация в 3x-UI: {login_endpoint} (base_url: {self.base_url}, api_url: {self.api_url})")
+        
+        # Для localhost проверяем доступность порта перед попыткой подключения
+        if self.base_url.startswith("http://127.0.0.1") or self.base_url.startswith("http://localhost"):
+            import socket
+            try:
+                # Извлекаем порт из URL
+                port = 38868  # По умолчанию
+                if ":38868" in self.base_url:
+                    port = 38868
+                elif ":2053" in self.base_url:
+                    port = 2053
+                else:
+                    # Пытаемся извлечь порт из URL
+                    from urllib.parse import urlparse
+                    parsed = urlparse(self.base_url)
+                    if parsed.port:
+                        port = parsed.port
+                
+                # Проверяем доступность порта
+                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                sock.settimeout(2)
+                result = sock.connect_ex(("127.0.0.1", port))
+                sock.close()
+                
+                if result != 0:
+                    error_msg = f"Порт {port} на localhost недоступен. Проверьте, что SSH-туннель запущен и работает."
+                    logger.error(f"Ошибка подключения к 3x-UI: {error_msg}")
+                    raise ConnectionError(error_msg)
+                else:
+                    logger.debug(f"Порт {port} на localhost доступен")
+            except socket.error as e:
+                error_msg = f"Не удалось проверить доступность порта {port} на localhost: {e}"
+                logger.error(f"Ошибка проверки порта: {error_msg}")
+                raise ConnectionError(error_msg)
+            except Exception as e:
+                logger.warning(f"Ошибка при проверке доступности порта: {e}")
         
         try:
             response = await self._session.post(
@@ -112,9 +148,13 @@ class X3UIAPI:
             
             logger.warning(f"Ошибка авторизации в 3x-UI: HTTP {response.status_code}")
             return False
+        except httpx.ConnectError as e:
+            error_msg = f"Не удалось подключиться к {login_endpoint}. Проверьте, что сервер доступен и SSH-туннель работает (если используется localhost)."
+            logger.error(f"Ошибка подключения к 3x-UI (API URL: {self.api_url}): {error_msg} ({e})")
+            raise ConnectionError(error_msg) from e
         except Exception as e:
             logger.error(f"Ошибка авторизации в 3x-UI (API URL: {self.api_url}): {e}")
-            return False
+            raise
     
     async def list_inbounds(self) -> list[dict[str, Any]]:
         """

@@ -7508,18 +7508,30 @@ async def _generate_vpn_config_for_user_server(user_id: int, server_id: int, ses
             # Создаем клиента в 3x-UI
             expire_timestamp = int(expires_at.timestamp() * 1000) if expires_at else 0  # 3x-UI использует миллисекунды
             logger.info(
-                f"Создание клиента через 3x-UI API для пользователя {user_id} на сервере {server.name} (ID: {server.id}): "
+                f"Создание клиента через 3x-UI API для пользователя {user_id} (tg_id: {user.tg_id}) на сервере {server.name} (ID: {server.id}): "
                 f"API URL={server.x3ui_api_url}, Inbound ID={inbound_id}, email={client_email}"
             )
-            client_data = await x3ui.add_client(
-                inbound_id=inbound_id,
-                email=client_email,
-                uuid=None,  # Автоматическая генерация
-                flow=server.xray_flow or "",
-                expire=expire_timestamp,
-                limit_ip=limit_ip,
-                total_gb=0,  # Без ограничений трафика
-            )
+            
+            try:
+                client_data = await x3ui.add_client(
+                    inbound_id=inbound_id,
+                    email=client_email,
+                    uuid=None,  # Автоматическая генерация
+                    flow=server.xray_flow or "",
+                    expire=expire_timestamp,
+                    limit_ip=limit_ip,
+                    total_gb=0,  # Без ограничений трафика
+                )
+            except ConnectionError as e:
+                # Специальная обработка ошибок подключения
+                error_msg = str(e)
+                if "localhost" in server.x3ui_api_url or "127.0.0.1" in server.x3ui_api_url:
+                    error_msg = f"Не удалось подключиться к 3x-UI через SSH-туннель. Проверьте, что SSH-туннель запущен и порт доступен. Ошибка: {e}"
+                logger.error(f"Ошибка подключения к 3x-UI для сервера {server.name}: {error_msg}")
+                raise ValueError(error_msg) from e
+            except Exception as e:
+                logger.error(f"Ошибка при создании клиента в 3x-UI для сервера {server.name}: {e}")
+                raise
             
             if client_data:
                 # Получаем UUID созданного клиента
@@ -7574,6 +7586,18 @@ async def _generate_vpn_config_for_user_server(user_id: int, server_id: int, ses
             else:
                 logger.warning(f"Ошибка при создании клиента через API 3x-UI для сервера {server.name}: {e}")
                 raise
+        except ConnectionError as e:
+            # Ошибка подключения (например, SSH-туннель не работает)
+            error_msg = str(e)
+            logger.error(f"Ошибка подключения к 3x-UI для сервера {server.name}: {error_msg}")
+            # Если есть UUID, используем fallback
+            if server.xray_uuid:
+                logger.info(f"Используем fallback на UUID для сервера {server.name} после ошибки подключения")
+                config_text = None
+                user_uuid = None
+            else:
+                # Пробрасываем ошибку с понятным сообщением
+                raise ValueError(f"Не удалось подключиться к 3x-UI для сервера {server.name}. {error_msg}")
         except Exception as e:
             import httpx
             # Если это HTTP ошибка от 3x-UI API, пробрасываем её дальше для правильной обработки
