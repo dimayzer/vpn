@@ -919,8 +919,8 @@ async def lifespan(app: FastAPI):
                                         if not cred.user:
                                             continue
                                         
-                                        # Формируем email клиента
-                                        client_email = f"user_{cred.user_id}_server_{server.id}@fiorevpn"
+                                        # Формируем email клиента с tg_id
+                                        client_email = f"tg_{cred.user.tg_id}_server_{server.id}@fiorevpn"
                                         
                                         # Получаем IP адреса клиента
                                         ips = await x3ui.get_client_ips(client_email)
@@ -7445,8 +7445,8 @@ async def _generate_vpn_config_for_user_server(user_id: int, server_id: int, ses
                             f"Проверьте настройки API 3x-UI (URL: {server.x3ui_api_url}, username: {server.x3ui_username})."
                         )
             
-            # Генерируем уникальный email для клиента
-            client_email = f"user_{user_id}_server_{server.id}@fiorevpn"
+            # Генерируем уникальный email для клиента с tg_id
+            client_email = f"tg_{user.tg_id}_server_{server.id}@fiorevpn"
             
             # ВАЖНО: Удаляем существующего клиента перед созданием нового (для regenerate и duplicate email)
             try:
@@ -8078,7 +8078,7 @@ async def select_server_for_user(
                     password=old_server.x3ui_password,
                 )
                 try:
-                    client_email = f"user_{user.id}_server_{old_server.id}@fiorevpn"
+                    client_email = f"tg_{user.tg_id}_server_{old_server.id}@fiorevpn"
                     inbound_id = old_server.x3ui_inbound_id
                     if inbound_id:
                         deleted = await x3ui.delete_client(inbound_id, client_email)
