@@ -31,10 +31,16 @@ services:
     environment:
       DB_URL: ${DB_URL:-postgresql+asyncpg://${POSTGRES_USER:-user}:${POSTGRES_PASSWORD:-password}@db:5432/${POSTGRES_DB:-vpn}}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      # SSH-туннель для 3x-UI (опционально)
+      X3UI_SSH_HOST: ${X3UI_SSH_HOST:-}
+      X3UI_SSH_USER: ${X3UI_SSH_USER:-}
+      X3UI_SSH_KEY: ${X3UI_SSH_KEY:-/ssh/x3ui_key}
     ports:
       - "${CORE_PORT:-8000}:8000"
     volumes:
       - ./backups:/app/backups
+      # SSH-ключ для туннеля (создайте директорию ssh/ и поместите туда ключ)
+      - ./ssh:/ssh:ro
     depends_on:
       db:
         condition: service_healthy

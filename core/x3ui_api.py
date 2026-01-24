@@ -42,8 +42,11 @@ class X3UIAPI:
     async def _ensure_session(self):
         """Убедиться, что сессия создана и авторизована"""
         if self._session is None:
-            # Отключаем проверку SSL для самоподписанных сертификатов
-            self._session = httpx.AsyncClient(timeout=15.0, follow_redirects=True, verify=False)
+            # Для localhost (SSH-туннель) отключаем проверку SSL
+            # Для внешних URL проверка SSL включена
+            verify_ssl = not (self.api_url.startswith("http://127.0.0.1") or 
+                             self.api_url.startswith("http://localhost"))
+            self._session = httpx.AsyncClient(timeout=15.0, follow_redirects=True, verify=verify_ssl)
         
         if not self._logged_in:
             await self.login()
@@ -64,8 +67,11 @@ class X3UIAPI:
             True если авторизация успешна, False иначе
         """
         if self._session is None:
-            # Отключаем проверку SSL для самоподписанных сертификатов
-            self._session = httpx.AsyncClient(timeout=15.0, follow_redirects=True, verify=False)
+            # Для localhost (SSH-туннель) отключаем проверку SSL
+            # Для внешних URL проверка SSL включена
+            verify_ssl = not (self.base_url.startswith("http://127.0.0.1") or 
+                             self.base_url.startswith("http://localhost"))
+            self._session = httpx.AsyncClient(timeout=15.0, follow_redirects=True, verify=verify_ssl)
         
         login_endpoint = f"{self.base_url}/login"
         logger.info(f"Авторизация в 3x-UI: {login_endpoint}")

@@ -7,6 +7,8 @@ RUN apt-get update && \
     apt-get install -y --no-install-recommends \
     postgresql-client \
     curl \
+    autossh \
+    openssh-client \
     && rm -rf /var/lib/apt/lists/*
 
 # Копирование requirements и установка зависимостей
@@ -20,8 +22,15 @@ COPY env.sample .env.sample
 # Создание директории для бэкапов
 RUN mkdir -p /app/backups
 
+# Копирование entrypoint скрипта
+COPY core/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
 # Порт для FastAPI
 EXPOSE 8000
+
+# Используем entrypoint для запуска SSH-туннеля (если настроен)
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
 
 # Запуск приложения
 CMD ["uvicorn", "core.main:app", "--host", "0.0.0.0", "--port", "8000"]
