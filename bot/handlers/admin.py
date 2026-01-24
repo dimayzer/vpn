@@ -336,7 +336,18 @@ def register(dp: Dispatcher, admin_ids: set[int]) -> None:
             return
         await state.clear()
         is_admin_user = is_admin(admin_ids, message.from_user.id if message.from_user else None)
-        await message.answer("Вышли из админки.", reply_markup=user_menu(is_admin=is_admin_user))
+        
+        # Проверяем активную подписку для отображения кнопок
+        has_subscription = False
+        try:
+            if message.from_user:
+                api = CoreApi(str(settings.core_api_base), admin_token=settings.admin_token or "")
+                status = await api.subscription_status(message.from_user.id)
+                has_subscription = status.get("has_active", False)
+        except Exception:
+            pass  # Игнорируем ошибки при проверке подписки
+        
+        await message.answer("Вышли из админки.", reply_markup=user_menu(is_admin=is_admin_user, has_subscription=has_subscription))
 
     # --- Users submenu navigation ---
     @router.message(AdminUsers.browsing, F.text == BTN_NEXT)

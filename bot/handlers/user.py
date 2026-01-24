@@ -769,6 +769,7 @@ async def show_profile_callback(callback: CallbackQuery) -> None:
         )
         
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="💰 Пополнить баланс", callback_data=f"topup_{tg_id}")],
             [InlineKeyboardButton(text="💳 История платежей", callback_data=f"payments_{tg_id}")],
             [InlineKeyboardButton(text="📊 Статистика", callback_data=f"stats_{tg_id}")],
         ])
