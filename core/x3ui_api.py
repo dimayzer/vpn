@@ -30,10 +30,16 @@ class X3UIAPI:
             username: Имя пользователя для авторизации
             password: Пароль для авторизации
         """
-        # Автоматически заменяем https на http для localhost (SSH-туннель)
-        if api_url.startswith("https://127.0.0.1") or api_url.startswith("https://localhost"):
-            api_url = api_url.replace("https://", "http://", 1)
-            logger.info(f"Автоматически заменен https на http для localhost: {api_url}")
+        # Автоматически заменяем localhost на host.docker.internal для доступа к SSH-туннелю на хосте
+        # SSH-туннель должен быть запущен на хосте и слушать на 0.0.0.0:38868
+        if "127.0.0.1" in api_url or api_url.startswith("http://localhost") or api_url.startswith("https://localhost"):
+            api_url = api_url.replace("127.0.0.1", "host.docker.internal")
+            api_url = api_url.replace("http://localhost", "http://host.docker.internal")
+            api_url = api_url.replace("https://localhost", "http://host.docker.internal")
+            # Также заменяем https на http для localhost (SSH-туннель не использует SSL)
+            if api_url.startswith("https://host.docker.internal"):
+                api_url = api_url.replace("https://", "http://", 1)
+            logger.info(f"Автоматически заменен localhost на host.docker.internal: {api_url}")
         
         self.api_url = api_url.rstrip("/")
         self.username = username
@@ -42,10 +48,10 @@ class X3UIAPI:
         self.base_url = self.api_url.replace("/panel/api", "")
         
         # Для внешних HTTPS URL отключаем проверку SSL (скорее всего самоподписанные сертификаты)
-        # Для localhost проверка SSL уже отключена через http
+        # Для host.docker.internal проверка SSL уже отключена через http
         self._disable_ssl_verify = (
             self.api_url.startswith("https://") and 
-            not (self.api_url.startswith("https://127.0.0.1") or self.api_url.startswith("https://localhost"))
+            not (self.api_url.startswith("https://host.docker.internal") or self.api_url.startswith("http://host.docker.internal"))
         )
         if self._disable_ssl_verify:
             logger.debug(f"Отключена проверка SSL для внешнего HTTPS URL: {self.api_url}")
@@ -57,9 +63,10 @@ class X3UIAPI:
     async def _ensure_session(self):
         """Убедиться, что сессия создана и авторизована"""
         if self._session is None:
-            # Для localhost (SSH-туннель) отключаем проверку SSL
+            # Для host.docker.internal (SSH-туннель) отключаем проверку SSL
             # Для внешних HTTPS URL также отключаем, если установлен флаг
             verify_ssl = not (
+                self.api_url.startswith("http://host.docker.internal") or 
                 self.api_url.startswith("http://127.0.0.1") or 
                 self.api_url.startswith("http://localhost") or
                 getattr(self, '_disable_ssl_verify', False)
@@ -85,9 +92,10 @@ class X3UIAPI:
             True если авторизация успешна, False иначе
         """
         if self._session is None:
-            # Для localhost (SSH-туннель) отключаем проверку SSL
+            # Для host.docker.internal (SSH-туннель) отключаем проверку SSL
             # Для внешних HTTPS URL также отключаем, если установлен флаг
             verify_ssl = not (
+                self.base_url.startswith("http://host.docker.internal") or
                 self.base_url.startswith("http://127.0.0.1") or 
                 self.base_url.startswith("http://localhost") or
                 getattr(self, '_disable_ssl_verify', False)
@@ -97,9 +105,9 @@ class X3UIAPI:
         login_endpoint = f"{self.base_url}/login"
         logger.info(f"Авторизация в 3x-UI: {login_endpoint} (base_url: {self.base_url}, api_url: {self.api_url})")
         
-        # Для localhost логируем информацию (проверку порта пропускаем, так как она может быть неточной в Docker)
-        if self.base_url.startswith("http://127.0.0.1") or self.base_url.startswith("http://localhost"):
-            logger.info(f"Подключение к 3x-UI через localhost (предполагается SSH-туннель): {self.base_url}")
+        # Для host.docker.internal логируем информацию
+        if self.base_url.startswith("http://host.docker.internal"):
+            logger.info(f"Подключение к 3x-UI через host.docker.internal (SSH-туннель на хосте): {self.base_url}")
         
         try:
             response = await self._session.post(
