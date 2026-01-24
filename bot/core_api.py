@@ -83,10 +83,18 @@ class CoreApi:
             r.raise_for_status()
             return r.json()
     
-    async def generate_vpn_key(self, tg_id: int) -> dict[str, Any]:
-        """Сгенерировать новый VPN ключ для пользователя"""
+    async def generate_vpn_key(self, tg_id: int, regenerate: bool = False) -> dict[str, Any]:
+        """Сгенерировать новый VPN ключ для пользователя
+        
+        Args:
+            tg_id: Telegram ID пользователя
+            regenerate: Если True, деактивирует старый ключ и создает новый (для "Сменить ключ")
+        """
         async with httpx.AsyncClient(timeout=10.0) as client:
-            r = await client.post(f"{self._base_url}/users/{tg_id}/vpn-key/generate")
+            r = await client.post(
+                f"{self._base_url}/users/{tg_id}/vpn-key/generate",
+                json={"regenerate": regenerate}
+            )
             r.raise_for_status()
             return r.json()
     

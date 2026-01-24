@@ -7038,6 +7038,10 @@ async def _generate_vpn_config_for_user_server(user_id: int, server_id: int, ses
             
             # Создаем клиента в 3x-UI (упрощенный вариант)
             expire_timestamp = int(expires_at.timestamp() * 1000) if expires_at else 0  # 3x-UI использует миллисекунды
+            logger.info(
+                f"Создание клиента через 3x-UI API для пользователя {user_id} на сервере {server.name} (ID: {server.id}): "
+                f"API URL={server.x3ui_api_url}, Inbound ID={inbound_id}, email={client_email}"
+            )
             client_data = await x3ui.add_client(
                 inbound_id=inbound_id,
                 email=client_email,
@@ -7102,13 +7106,18 @@ async def _generate_vpn_config_for_user_server(user_id: int, server_id: int, ses
                 logger.warning(f"Ошибка при создании клиента через API 3x-UI для сервера {server.name}: {e}")
                 raise
         except Exception as e:
-            logger.warning(f"Ошибка при создании клиента через API 3x-UI для сервера {server.name}: {e}")
+            import httpx
+            # Если это HTTP ошибка от 3x-UI API, пробрасываем её дальше для правильной обработки
+            if isinstance(e, (httpx.HTTPStatusError, httpx.RequestError)):
+                logger.warning(f"HTTP ошибка при создании клиента через API 3x-UI для сервера {server.name}: {e}")
+                raise
             # Если есть UUID, пытаемся использовать fallback
             if server.xray_uuid:
                 logger.info(f"Используем fallback на UUID для сервера {server.name} после ошибки API")
                 config_text = None
                 user_uuid = None
             else:
+                logger.warning(f"Ошибка при создании клиента через API 3x-UI для сервера {server.name}: {e}")
                 raise
         
         # Если конфиг не был создан через API, но есть UUID, используем fallback
@@ -7675,28 +7684,60 @@ async def generate_user_vpn_key(
     if not server or not server.is_enabled:
         raise HTTPException(status_code=404, detail="server_not_found")
     
-    # Деактивируем старые ключи для этого сервера
-    old_credentials = await session.scalars(
+    # Проверяем, есть ли уже активный ключ
+    existing_active = await session.scalar(
         select(VpnCredential)
         .where(VpnCredential.user_id == user.id)
         .where(VpnCredential.server_id == user.selected_server_id)
         .where(VpnCredential.active == True)
+        .order_by(VpnCredential.created_at.desc())
     )
-    for old_cred in old_credentials.all():
-        old_cred.active = False
+    
+    # Проверяем параметр regenerate (для "Сменить ключ")
+    regenerate = payload and payload.get("regenerate", False) if payload else False
+    
+    # Если пользователь уже имеет активный ключ и не запрошена регенерация, возвращаем 400
+    if existing_active and existing_active.config_text and not regenerate:
+        raise HTTPException(status_code=400, detail="user_already_has_key")
+    
+    # Если запрошена регенерация, деактивируем старый ключ
+    if existing_active and regenerate:
+        existing_active.active = False
+        await session.commit()
     
     # Генерируем новый ключ
     try:
+        import httpx
         await _generate_vpn_config_for_user_server(user.id, user.selected_server_id, session, user.subscription_ends_at)
     except ValueError as e:
-        # Если не удалось сгенерировать конфиг (например, Inbound не найден), возвращаем понятную ошибку
         error_msg = str(e)
-        if "Inbound не найден" in error_msg or "не настроен" in error_msg or "не удалось" in error_msg:
+        # 503 - 3x-UI недоступен
+        if "не удалось получить список Inbounds" in error_msg or "не удалось получить" in error_msg.lower() or "не удалось подключиться" in error_msg.lower():
+            raise HTTPException(status_code=503, detail=f"3x_ui_unavailable: {error_msg}")
+        # 400 - ошибка конфигурации сервера
+        if "Inbound не найден" in error_msg or "не настроен" in error_msg:
             raise HTTPException(status_code=400, detail=f"server_configuration_error: {error_msg}")
-        raise HTTPException(status_code=500, detail=f"key_generation_failed: {error_msg}")
-    except Exception as e:
+        # 500 - реальный баг
         import logging
         logging.error(f"Ошибка при генерации ключа для пользователя {user.tg_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"key_generation_failed: {error_msg}")
+    except httpx.HTTPStatusError as e:
+        # 503 - 3x-UI недоступен (HTTP ошибки от API)
+        if e.response.status_code in (404, 503, 502, 504):
+            raise HTTPException(status_code=503, detail=f"3x_ui_unavailable: HTTP {e.response.status_code}")
+        # 500 - другие HTTP ошибки
+        import logging
+        logging.error(f"HTTP ошибка при генерации ключа для пользователя {user.tg_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="key_generation_failed")
+    except httpx.RequestError as e:
+        # 503 - 3x-UI недоступен (сетевые ошибки)
+        import logging
+        logging.warning(f"Сетевая ошибка при подключении к 3x-UI для пользователя {user.tg_id}: {e}")
+        raise HTTPException(status_code=503, detail="3x_ui_unavailable: Не удалось подключиться к 3x-UI")
+    except Exception as e:
+        # 500 - только реальные баги
+        import logging
+        logging.error(f"Неожиданная ошибка при генерации ключа для пользователя {user.tg_id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="key_generation_failed")
     
     # Получаем созданный ключ
@@ -7709,6 +7750,8 @@ async def generate_user_vpn_key(
     )
     
     if not credential or not credential.config_text:
+        import logging
+        logging.error(f"Ключ не был создан для пользователя {user.tg_id}, хотя ошибок не было")
         raise HTTPException(status_code=500, detail="key_generation_failed")
     
     return {"key": credential.config_text, "server_name": server.name}

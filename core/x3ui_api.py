@@ -188,48 +188,133 @@ class X3UIAPI:
                 from core.xray import generate_uuid
                 uuid = generate_uuid()
             
-            # Простой payload как в примере ChatGPT
-            payload = {
-                "id": inbound_id,
-                "settings": json.dumps({
-                    "clients": [{
-                        "id": uuid,
+            # Проверяем, что API URL правильный
+            if not self.api_url.endswith("/panel/api"):
+                logger.warning(f"API URL может быть неправильным: {self.api_url}. Ожидается формат: http://IP:2053/panel/api")
+            
+            logger.info(f"Попытка создать клиента через 3x-UI API: URL={self.api_url}, inbound_id={inbound_id}, email={email}, uuid={uuid}")
+            logger.debug(f"Добавление клиента: inbound_id={inbound_id}, email={email}, uuid={uuid}, api_url={self.api_url}")
+            
+            # Пробуем разные форматы payload и endpoints (согласно документации и примеру ChatGPT)
+            async with httpx.AsyncClient(timeout=10.0) as http_client:
+                # Вариант 1: Формат из документации 3x-UI API
+                endpoints_v1 = [
+                    f"{self.api_url}/inbounds/{inbound_id}/addClient",  # С inbound_id в пути
+                    f"{self.api_url}/inbounds/addClient",  # Без inbound_id в пути
+                ]
+                
+                payload_v1 = {
+                    "id": inbound_id,
+                    "client": {
                         "email": email,
-                        "enable": True,
+                        "id": uuid,
+                        "flow": flow,
                         "expiryTime": expire,
                         "limitIp": limit_ip,
-                        "flow": flow
-                    }]
-                })
-            }
-            
-            # Простой вызов API endpoint
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                endpoint = f"{self.api_url}/inbounds/addClient"
-                response = await client.post(
-                    endpoint,
-                    json=payload,
-                    headers=self._get_auth_headers(),
-                )
+                        "totalGB": 0,  # Без ограничений трафика
+                        "enable": True,
+                    }
+                }
                 
-                if response.status_code == 200:
-                    result = response.json()
-                    if result.get("success"):
-                        logger.info(f"Клиент {email} успешно добавлен в Inbound {inbound_id} с UUID {uuid}")
-                        return {
+                for endpoint in endpoints_v1:
+                    try:
+                        response = await http_client.post(
+                            endpoint,
+                            json=payload_v1,
+                            headers=self._get_auth_headers(),
+                        )
+                        logger.debug(f"Ответ от {endpoint}: статус {response.status_code}, тело: {response.text[:200]}")
+                        if response.status_code == 200:
+                            result = response.json()
+                            if result.get("success"):
+                                logger.info(f"Клиент {email} успешно добавлен в Inbound {inbound_id} с UUID {uuid}")
+                                return {
+                                    "id": uuid,
+                                    "uuid": uuid,
+                                    "email": email,
+                                }
+                            else:
+                                logger.warning(f"API вернул success=false для {endpoint}: {result}")
+                        else:
+                            logger.warning(f"HTTP {response.status_code} от {endpoint} (API URL: {self.api_url}): {response.text[:200]}")
+                    except Exception as e:
+                        logger.debug(f"Ошибка при вызове {endpoint}: {e}")
+                        continue
+                
+                # Вариант 2: Формат из примера ChatGPT (settings как JSON строка)
+                payload_v2 = {
+                    "id": inbound_id,
+                    "settings": json.dumps({
+                        "clients": [{
                             "id": uuid,
-                            "uuid": uuid,
                             "email": email,
-                        }
-                    else:
-                        logger.warning(f"API вернул success=false: {result}")
-                        return None
-                else:
-                    logger.error(f"Ошибка при добавлении клиента: HTTP {response.status_code}, {response.text}")
-                    return None
+                            "enable": True,
+                            "expiryTime": expire,
+                            "limitIp": limit_ip,
+                            "flow": flow
+                        }]
+                    })
+                }
+                
+                for endpoint in endpoints_v1:
+                    try:
+                        response = await http_client.post(
+                            endpoint,
+                            json=payload_v2,
+                            headers=self._get_auth_headers(),
+                        )
+                        last_response = response
+                        logger.debug(f"Ответ от {endpoint} (вариант 2): статус {response.status_code}, тело: {response.text[:200]}")
+                        if response.status_code == 200:
+                            result = response.json()
+                            if result.get("success"):
+                                logger.info(f"Клиент {email} успешно добавлен в Inbound {inbound_id} с UUID {uuid} (вариант 2)")
+                                return {
+                                    "id": uuid,
+                                    "uuid": uuid,
+                                    "email": email,
+                                }
+                            else:
+                                logger.warning(f"API вернул success=false для {endpoint} (вариант 2): {result}")
+                        else:
+                            logger.warning(f"HTTP {response.status_code} от {endpoint} (вариант 2, API URL: {self.api_url}): {response.text[:200]}")
+                    except httpx.HTTPStatusError as e:
+                        last_exception = e
+                        last_response = e.response
+                        logger.debug(f"HTTP ошибка при вызове {endpoint} (вариант 2): {e}")
+                        continue
+                    except httpx.RequestError as e:
+                        last_exception = e
+                        logger.debug(f"Сетевая ошибка при вызове {endpoint} (вариант 2): {e}")
+                        continue
+                    except Exception as e:
+                        last_exception = e
+                        logger.debug(f"Ошибка при вызове {endpoint} (вариант 2): {e}")
+                        continue
+                
+                # Если ничего не сработало, пробрасываем последнюю ошибку для правильной обработки
+                if last_exception:
+                    raise last_exception
+                elif last_response and last_response.status_code != 200:
+                    last_response.raise_for_status()
+                
+                # Если дошли сюда, значит все попытки не удались без ошибок
+                logger.error(
+                    f"Не удалось добавить клиента в Inbound {inbound_id}. "
+                    f"API URL: {self.api_url}, "
+                    f"Попробованы endpoints: {endpoints_v1}, "
+                    f"Попробованы оба формата payload. "
+                    f"Email: {email}, UUID: {uuid}"
+                )
+                raise ValueError(f"Не удалось добавить клиента в Inbound {inbound_id}")
+        except (httpx.HTTPStatusError, httpx.RequestError) as e:
+            # Пробрасываем HTTP ошибки дальше для правильной обработки
+            logger.error(f"HTTP ошибка при добавлении клиента в 3x-UI (API URL: {self.api_url}, Inbound ID: {inbound_id}): {e}")
+            raise
         except Exception as e:
-            logger.error(f"Ошибка при добавлении клиента в 3x-UI: {e}", exc_info=True)
-            return None
+            # Другие ошибки тоже пробрасываем
+            logger.error(f"Ошибка при добавлении клиента в 3x-UI (API URL: {self.api_url}, Inbound ID: {inbound_id}): {e}", exc_info=True)
+            raise
     
     async def delete_client(self, inbound_id: int, email: str) -> bool:
         """

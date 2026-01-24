@@ -3,6 +3,8 @@ from __future__ import annotations
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
+import httpx
+
 from aiogram import Dispatcher, Router, F
 from aiogram.filters import CommandStart, Command
 from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery, PreCheckoutQuery, SuccessfulPayment
@@ -1680,33 +1682,55 @@ async def generate_key_handler(callback: CallbackQuery) -> None:
         settings = get_settings()
         api = CoreApi(str(settings.core_api_base), admin_token=settings.admin_token or "")
         
-        # Генерируем ключ
+        # Генерируем ключ (regenerate=False - создать новый)
         try:
-            result = await api.generate_vpn_key(callback.from_user.id)
+            result = await api.generate_vpn_key(callback.from_user.id, regenerate=False)
             vpn_key = result.get("key")
             server_name = result.get("server_name", "Сервер")
             
             if not vpn_key:
                 await callback.answer("❌ Не удалось сгенерировать ключ", show_alert=True)
                 return
-        except Exception as e:
+        except httpx.HTTPStatusError as e:
             import logging
-            error_msg = str(e)
-            logging.error(f"Ошибка при генерации ключа: {e}", exc_info=True)
+            status_code = e.response.status_code
+            error_detail = ""
+            try:
+                error_data = e.response.json()
+                error_detail = error_data.get("detail", "")
+            except:
+                pass
             
-            # Понятные сообщения об ошибках
-            if "Inbound не найден" in error_msg or "server_configuration_error" in error_msg:
+            logging.error(f"HTTP ошибка при генерации ключа: {status_code} - {error_detail}")
+            
+            # Обработка разных HTTP статусов
+            if status_code == 400:
+                if "user_already_has_key" in error_detail:
+                    await callback.answer(
+                        "❌ У вас уже есть активный ключ. Используйте кнопку 'Сменить ключ' для создания нового.",
+                        show_alert=True
+                    )
+                elif "server_configuration_error" in error_detail or "Inbound не найден" in error_detail:
+                    await callback.answer(
+                        "❌ Ошибка конфигурации сервера. Обратитесь в поддержку.",
+                        show_alert=True
+                    )
+                else:
+                    await callback.answer("❌ Ошибка запроса. Проверьте данные и попробуйте снова.", show_alert=True)
+            elif status_code == 404:
+                await callback.answer("❌ Пользователь или сервер не найден.", show_alert=True)
+            elif status_code == 503:
                 await callback.answer(
-                    "❌ Ошибка конфигурации сервера. Обратитесь в поддержку.",
-                    show_alert=True
-                )
-            elif "rate_limit_exceeded" in error_msg:
-                await callback.answer(
-                    "❌ Превышен лимит генерации ключей. Попробуйте позже.",
+                    "❌ Сервер VPN временно недоступен. Попробуйте позже.",
                     show_alert=True
                 )
             else:
                 await callback.answer("❌ Ошибка при генерации ключа. Попробуйте позже.", show_alert=True)
+        except Exception as e:
+            import logging
+            error_msg = str(e)
+            logging.error(f"Ошибка при генерации ключа: {e}", exc_info=True)
+            await callback.answer("❌ Ошибка при генерации ключа. Попробуйте позже.", show_alert=True)
             return
         
         # Обновляем сообщение
@@ -1751,13 +1775,50 @@ async def regenerate_key_handler(callback: CallbackQuery) -> None:
         settings = get_settings()
         api = CoreApi(str(settings.core_api_base), admin_token=settings.admin_token or "")
         
-        # Генерируем новый ключ
-        result = await api.generate_vpn_key(callback.from_user.id)
-        vpn_key = result.get("key")
-        server_name = result.get("server_name", "Сервер")
-        
-        if not vpn_key:
-            await callback.answer("❌ Не удалось сгенерировать ключ", show_alert=True)
+        # Генерируем новый ключ (regenerate=True - сменить существующий)
+        try:
+            result = await api.generate_vpn_key(callback.from_user.id, regenerate=True)
+            vpn_key = result.get("key")
+            server_name = result.get("server_name", "Сервер")
+            
+            if not vpn_key:
+                await callback.answer("❌ Не удалось сгенерировать ключ", show_alert=True)
+                return
+        except httpx.HTTPStatusError as e:
+            import logging
+            status_code = e.response.status_code
+            error_detail = ""
+            try:
+                error_data = e.response.json()
+                error_detail = error_data.get("detail", "")
+            except:
+                pass
+            
+            logging.error(f"HTTP ошибка при регенерации ключа: {status_code} - {error_detail}")
+            
+            # Обработка разных HTTP статусов
+            if status_code == 400:
+                if "server_configuration_error" in error_detail or "Inbound не найден" in error_detail:
+                    await callback.answer(
+                        "❌ Ошибка конфигурации сервера. Обратитесь в поддержку.",
+                        show_alert=True
+                    )
+                else:
+                    await callback.answer("❌ Ошибка запроса. Проверьте данные и попробуйте снова.", show_alert=True)
+            elif status_code == 404:
+                await callback.answer("❌ Пользователь или сервер не найден.", show_alert=True)
+            elif status_code == 503:
+                await callback.answer(
+                    "❌ Сервер VPN временно недоступен. Попробуйте позже.",
+                    show_alert=True
+                )
+            else:
+                await callback.answer("❌ Ошибка при генерации ключа. Попробуйте позже.", show_alert=True)
+            return
+        except Exception as e:
+            import logging
+            logging.error(f"Ошибка при регенерации ключа: {e}", exc_info=True)
+            await callback.answer("❌ Ошибка при генерации ключа. Попробуйте позже.", show_alert=True)
             return
         
         # Обновляем сообщение
