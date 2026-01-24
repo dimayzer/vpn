@@ -695,8 +695,10 @@ async def lifespan(app: FastAPI):
             await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_ip_logs_server_id ON ip_logs(server_id)"))
             await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_ip_logs_ip_address ON ip_logs(ip_address)"))
             await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_ip_logs_last_seen ON ip_logs(last_seen)"))
+            await conn.commit()
             logger.info("Created ip_logs table")
         except Exception as e:
+            await conn.rollback()
             if "already exists" not in str(e).lower():
                 logger.warning(f"Could not create ip_logs table (might already exist): {e}")
         
@@ -718,8 +720,10 @@ async def lifespan(app: FastAPI):
             """))
             await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_user_bans_user_id ON user_bans(user_id)"))
             await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_user_bans_is_active ON user_bans(is_active)"))
+            await conn.commit()
             logger.info("Created user_bans table")
         except Exception as e:
+            await conn.rollback()
             if "already exists" not in str(e).lower():
                 logger.warning(f"Could not create user_bans table (might already exist): {e}")
         
