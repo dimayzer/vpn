@@ -40,6 +40,16 @@ class X3UIAPI:
         self.password = password
         # Базовый URL (без /panel/api) для логина
         self.base_url = self.api_url.replace("/panel/api", "")
+        
+        # Для внешних HTTPS URL отключаем проверку SSL (скорее всего самоподписанные сертификаты)
+        # Для localhost проверка SSL уже отключена через http
+        self._disable_ssl_verify = (
+            self.api_url.startswith("https://") and 
+            not (self.api_url.startswith("https://127.0.0.1") or self.api_url.startswith("https://localhost"))
+        )
+        if self._disable_ssl_verify:
+            logger.debug(f"Отключена проверка SSL для внешнего HTTPS URL: {self.api_url}")
+        
         # Сессия будет создана при login()
         self._session: httpx.AsyncClient | None = None
         self._logged_in = False
@@ -48,9 +58,12 @@ class X3UIAPI:
         """Убедиться, что сессия создана и авторизована"""
         if self._session is None:
             # Для localhost (SSH-туннель) отключаем проверку SSL
-            # Для внешних URL проверка SSL включена
-            verify_ssl = not (self.api_url.startswith("http://127.0.0.1") or 
-                             self.api_url.startswith("http://localhost"))
+            # Для внешних HTTPS URL также отключаем, если установлен флаг
+            verify_ssl = not (
+                self.api_url.startswith("http://127.0.0.1") or 
+                self.api_url.startswith("http://localhost") or
+                getattr(self, '_disable_ssl_verify', False)
+            )
             self._session = httpx.AsyncClient(timeout=15.0, follow_redirects=True, verify=verify_ssl)
         
         if not self._logged_in:
@@ -73,49 +86,20 @@ class X3UIAPI:
         """
         if self._session is None:
             # Для localhost (SSH-туннель) отключаем проверку SSL
-            # Для внешних URL проверка SSL включена
-            verify_ssl = not (self.base_url.startswith("http://127.0.0.1") or 
-                             self.base_url.startswith("http://localhost"))
+            # Для внешних HTTPS URL также отключаем, если установлен флаг
+            verify_ssl = not (
+                self.base_url.startswith("http://127.0.0.1") or 
+                self.base_url.startswith("http://localhost") or
+                getattr(self, '_disable_ssl_verify', False)
+            )
             self._session = httpx.AsyncClient(timeout=15.0, follow_redirects=True, verify=verify_ssl)
         
         login_endpoint = f"{self.base_url}/login"
         logger.info(f"Авторизация в 3x-UI: {login_endpoint} (base_url: {self.base_url}, api_url: {self.api_url})")
         
-        # Для localhost проверяем доступность порта перед попыткой подключения
+        # Для localhost логируем информацию (проверку порта пропускаем, так как она может быть неточной в Docker)
         if self.base_url.startswith("http://127.0.0.1") or self.base_url.startswith("http://localhost"):
-            import socket
-            try:
-                # Извлекаем порт из URL
-                port = 38868  # По умолчанию
-                if ":38868" in self.base_url:
-                    port = 38868
-                elif ":2053" in self.base_url:
-                    port = 2053
-                else:
-                    # Пытаемся извлечь порт из URL
-                    from urllib.parse import urlparse
-                    parsed = urlparse(self.base_url)
-                    if parsed.port:
-                        port = parsed.port
-                
-                # Проверяем доступность порта
-                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                sock.settimeout(2)
-                result = sock.connect_ex(("127.0.0.1", port))
-                sock.close()
-                
-                if result != 0:
-                    error_msg = f"Порт {port} на localhost недоступен. Проверьте, что SSH-туннель запущен и работает."
-                    logger.error(f"Ошибка подключения к 3x-UI: {error_msg}")
-                    raise ConnectionError(error_msg)
-                else:
-                    logger.debug(f"Порт {port} на localhost доступен")
-            except socket.error as e:
-                error_msg = f"Не удалось проверить доступность порта {port} на localhost: {e}"
-                logger.error(f"Ошибка проверки порта: {error_msg}")
-                raise ConnectionError(error_msg)
-            except Exception as e:
-                logger.warning(f"Ошибка при проверке доступности порта: {e}")
+            logger.info(f"Подключение к 3x-UI через localhost (предполагается SSH-туннель): {self.base_url}")
         
         try:
             response = await self._session.post(
