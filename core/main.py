@@ -6958,78 +6958,78 @@ async def _generate_vpn_config_for_user_server(user_id: int, server_id: int, ses
     
     # Если сервер использует API 3x-UI - создаем клиента автоматически
     if server.x3ui_api_url and server.x3ui_username and server.x3ui_password:
-            from core.x3ui_api import X3UIAPI
-            from core.xray import generate_uuid
+        from core.x3ui_api import X3UIAPI
+        from core.xray import generate_uuid
+        
+        try:
+            x3ui = X3UIAPI(
+                api_url=server.x3ui_api_url,
+                username=server.x3ui_username,
+                password=server.x3ui_password,
+            )
             
-            try:
-                x3ui = X3UIAPI(
-                    api_url=server.x3ui_api_url,
-                    username=server.x3ui_username,
-                    password=server.x3ui_password,
-                )
+            # Определяем ID инбаунда
+            inbound_id = server.x3ui_inbound_id
+            
+            # Если ID не указан или инбаунд не найден, пытаемся найти автоматически
+            if not inbound_id or not await x3ui.get_inbound(inbound_id):
+                # Пытаемся найти инбаунд по порту и протоколу
+                port = server.xray_port or 443
+                protocol = "vless"  # По умолчанию VLESS
+                found_inbound = await x3ui.find_inbound_by_port_and_protocol(port, protocol)
                 
-                # Определяем ID инбаунда
-                inbound_id = server.x3ui_inbound_id
+                if found_inbound:
+                    inbound_id = found_inbound.get("id")
+                    logger.info(f"Автоматически найден Inbound ID {inbound_id} для сервера {server.name} (порт {port})")
+                    # Сохраняем найденный ID в базу данных
+                    server.x3ui_inbound_id = inbound_id
+                    await session.commit()
+                else:
+                    logger.warning(f"Не удалось найти Inbound для сервера {server.name} (порт {port}, протокол {protocol})")
+                    raise ValueError(f"Inbound не найден для сервера {server.name}")
+            
+            # Генерируем уникальный email для клиента
+            client_email = f"user_{user_id}_server_{server.id}@fiorevpn"
+            
+            # Создаем клиента в 3x-UI
+            expire_timestamp = int(expires_at.timestamp()) if expires_at else 0
+            client_data = await x3ui.add_client(
+                inbound_id=inbound_id,
+                email=client_email,
+                uuid=None,  # Автоматическая генерация
+                flow=server.xray_flow or "",
+                expire=expire_timestamp,
+            )
+            
+            if client_data:
+                # Получаем UUID созданного клиента
+                user_uuid = client_data.get("id") or client_data.get("uuid")
                 
-                # Если ID не указан или инбаунд не найден, пытаемся найти автоматически
-                if not inbound_id or not await x3ui.get_inbound(inbound_id):
-                    # Пытаемся найти инбаунд по порту и протоколу
-                    port = server.xray_port or 443
-                    protocol = "vless"  # По умолчанию VLESS
-                    found_inbound = await x3ui.find_inbound_by_port_and_protocol(port, protocol)
-                    
-                    if found_inbound:
-                        inbound_id = found_inbound.get("id")
-                        logger.info(f"Автоматически найден Inbound ID {inbound_id} для сервера {server.name} (порт {port})")
-                        # Сохраняем найденный ID в базу данных
-                        server.x3ui_inbound_id = inbound_id
-                        await session.commit()
-                    else:
-                        logger.warning(f"Не удалось найти Inbound для сервера {server.name} (порт {port}, протокол {protocol})")
-                        raise ValueError(f"Inbound не найден для сервера {server.name}")
+                if not user_uuid:
+                    logger.warning(f"Не удалось получить UUID для клиента {client_email} из ответа API 3x-UI")
+                    raise ValueError(f"Не удалось получить UUID для клиента на сервере {server.name}")
                 
-                # Генерируем уникальный email для клиента
-                client_email = f"user_{user_id}_server_{server.id}@fiorevpn"
-                
-                # Создаем клиента в 3x-UI
-                expire_timestamp = int(expires_at.timestamp()) if expires_at else 0
-                client_data = await x3ui.add_client(
+                # Получаем конфиг через API (параметры берутся из Inbound автоматически)
+                config_text = await x3ui.get_client_config(
                     inbound_id=inbound_id,
                     email=client_email,
-                    uuid=None,  # Автоматическая генерация
-                    flow=server.xray_flow or "",
-                    expire=expire_timestamp,
+                    server_host=server.host,
+                    server_port=server.xray_port,  # Если None, берется из Inbound
                 )
                 
-                if client_data:
-                    # Получаем UUID созданного клиента
-                    user_uuid = client_data.get("id") or client_data.get("uuid")
-                    
-                    if not user_uuid:
-                        logger.warning(f"Не удалось получить UUID для клиента {client_email} из ответа API 3x-UI")
-                        raise ValueError(f"Не удалось получить UUID для клиента на сервере {server.name}")
-                    
-                    # Получаем конфиг через API (параметры берутся из Inbound автоматически)
-                    config_text = await x3ui.get_client_config(
-                        inbound_id=inbound_id,
-                        email=client_email,
-                        server_host=server.host,
-                        server_port=server.xray_port,  # Если None, берется из Inbound
-                    )
-                    
-                    if not config_text:
-                        logger.warning(f"Не удалось получить конфиг для клиента {client_email} на сервере {server.name}")
-                        raise ValueError(f"Не удалось получить конфиг для клиента на сервере {server.name}")
-                else:
-                    # Клиент не был создан (инбаунд не найден или другая ошибка)
-                    logger.warning(f"Не удалось создать клиента через API 3x-UI для сервера {server.name} (ID: {server.id}, Inbound ID: {server.x3ui_inbound_id})")
-                    raise ValueError(f"Не удалось создать клиента на сервере {server.name}")
-            except Exception as e:
-                logger.warning(f"Ошибка при создании клиента через API 3x-UI для сервера {server.name}: {e}")
-                raise
-        
-        # Если API 3x-UI не настроен, используем старый способ с UUID
-        elif server.xray_uuid:
+                if not config_text:
+                    logger.warning(f"Не удалось получить конфиг для клиента {client_email} на сервере {server.name}")
+                    raise ValueError(f"Не удалось получить конфиг для клиента на сервере {server.name}")
+            else:
+                # Клиент не был создан (инбаунд не найден или другая ошибка)
+                logger.warning(f"Не удалось создать клиента через API 3x-UI для сервера {server.name} (ID: {server.id}, Inbound ID: {server.x3ui_inbound_id})")
+                raise ValueError(f"Не удалось создать клиента на сервере {server.name}")
+        except Exception as e:
+            logger.warning(f"Ошибка при создании клиента через API 3x-UI для сервера {server.name}: {e}")
+            raise
+    
+    # Если API 3x-UI не настроен, используем старый способ с UUID
+    elif server.xray_uuid:
             user_uuid = server.xray_uuid
             config_text = generate_vless_config(
                 user_uuid=user_uuid,
