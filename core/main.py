@@ -575,37 +575,8 @@ async def lifespan(app: FastAPI):
             import logging
             logging.warning(f"Could not add selected_server_id column (may already exist): {e}")
         
-        # Добавляем новое значение в enum auditlogaction, если его еще нет
-        try:
-            # Проверяем, существует ли уже значение backup_action
-            result = await conn.execute(
-                text("SELECT 1 FROM pg_enum WHERE enumlabel = 'backup_action' AND enumtypid = (SELECT oid FROM pg_type WHERE typname = 'auditlogaction')")
-            )
-            exists = result.scalar()
-            
-            if not exists:
-                # Добавляем значение в enum
-                await conn.execute(
-                    text("ALTER TYPE auditlogaction ADD VALUE 'backup_action'")
-                )
-                import logging
-                logging.info("Added backup_action to auditlogaction enum")
-        except Exception as e:
-            # Игнорируем ошибку, если значение уже существует или enum не существует
-            import logging
-            logging.warning(f"Could not add backup_action to enum (may already exist): {e}")
-        
-        # Проверяем и добавляем payment_created
-        try:
-            result = await conn.execute(
-                text("SELECT 1 FROM pg_enum WHERE enumlabel = 'payment_created' AND enumtypid = (SELECT oid FROM pg_type WHERE typname = 'auditlogaction')")
-            )
-            exists = result.scalar()
-            if not exists:
-                await conn.execute(text("ALTER TYPE auditlogaction ADD VALUE 'payment_created'"))
-                logging.info("Added payment_created to auditlogaction enum")
-        except Exception:
-            pass
+        # ALTER TYPE ... ADD VALUE нельзя выполнять внутри транзакции в PostgreSQL
+        # Enum значения определены в models.py и создаются автоматически
         
         # Добавляем колонки для таблицы servers, если их нет
         server_columns = [
@@ -661,99 +632,28 @@ async def lifespan(app: FastAPI):
             exists = result.scalar()
             if not exists:
                 await conn.execute(text("ALTER TABLE server_status ADD COLUMN connection_speed_mbps NUMERIC(10, 2)"))
-            
-            # Миграция: добавление поля user_uuid в vpn_credentials
-            try:
-                await conn.execute(text("ALTER TABLE vpn_credentials ADD COLUMN user_uuid VARCHAR(36)"))
-                await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_vpn_credentials_user_uuid ON vpn_credentials(user_uuid)"))
-                logger.info("Added user_uuid column to vpn_credentials table")
-            except Exception as e:
-                if "already exists" not in str(e).lower() and "duplicate" not in str(e).lower():
-                    logger.warning(f"Could not add user_uuid column (might already exist): {e}")
                 import logging
                 logging.info("Added connection_speed_mbps column to server_status table")
         except Exception as e:
             import logging
             logging.warning(f"Could not add connection_speed_mbps column (may already exist): {e}")
         
-        # Создаем таблицу ip_logs для мониторинга IP адресов
-        try:
-            await conn.execute(text("""
-                CREATE TABLE IF NOT EXISTS ip_logs (
-                    id SERIAL PRIMARY KEY,
-                    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-                    server_id INTEGER NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
-                    ip_address VARCHAR(45) NOT NULL,
-                    country VARCHAR(2),
-                    city VARCHAR(128),
-                    first_seen TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
-                    last_seen TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
-                    connection_count INTEGER NOT NULL DEFAULT 1
-                )
-            """))
-            await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_ip_logs_user_id ON ip_logs(user_id)"))
-            await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_ip_logs_server_id ON ip_logs(server_id)"))
-            await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_ip_logs_ip_address ON ip_logs(ip_address)"))
-            await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_ip_logs_last_seen ON ip_logs(last_seen)"))
-            await conn.commit()
-            logger.info("Created ip_logs table")
-        except Exception as e:
-            await conn.rollback()
-            if "already exists" not in str(e).lower():
-                logger.warning(f"Could not create ip_logs table (might already exist): {e}")
-        
-        # Создаем таблицу user_bans для хранения банов
-        try:
-            await conn.execute(text("""
-                CREATE TABLE IF NOT EXISTS user_bans (
-                    id SERIAL PRIMARY KEY,
-                    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-                    reason VARCHAR(255) NOT NULL,
-                    details TEXT,
-                    is_active BOOLEAN NOT NULL DEFAULT TRUE,
-                    banned_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
-                    banned_until TIMESTAMP WITH TIME ZONE,
-                    unbanned_at TIMESTAMP WITH TIME ZONE,
-                    unbanned_by_tg_id BIGINT,
-                    auto_ban BOOLEAN NOT NULL DEFAULT FALSE
-                )
-            """))
-            await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_user_bans_user_id ON user_bans(user_id)"))
-            await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_user_bans_is_active ON user_bans(is_active)"))
-            await conn.commit()
-            logger.info("Created user_bans table")
-        except Exception as e:
-            await conn.rollback()
-            if "already exists" not in str(e).lower():
-                logger.warning(f"Could not create user_bans table (might already exist): {e}")
-        
-        # Проверяем и добавляем payment_status_changed
+        # Добавляем колонку user_uuid в vpn_credentials, если её нет
         try:
             result = await conn.execute(
-                text("SELECT 1 FROM pg_enum WHERE enumlabel = 'payment_status_changed' AND enumtypid = (SELECT oid FROM pg_type WHERE typname = 'auditlogaction')")
+                text("SELECT column_name FROM information_schema.columns WHERE table_name='vpn_credentials' AND column_name='user_uuid'")
             )
             exists = result.scalar()
             if not exists:
-                await conn.execute(text("ALTER TYPE auditlogaction ADD VALUE 'payment_status_changed'"))
-                logging.info("Added payment_status_changed to auditlogaction enum")
-        except Exception:
-            pass
-        
-        # Проверяем и добавляем payment_webhook_received
-        try:
-            result = await conn.execute(
-                text("SELECT 1 FROM pg_enum WHERE enumlabel = 'payment_webhook_received' AND enumtypid = (SELECT oid FROM pg_type WHERE typname = 'auditlogaction')")
-            )
-            exists = result.scalar()
-            if not exists:
-                await conn.execute(text("ALTER TYPE auditlogaction ADD VALUE 'payment_webhook_received'"))
-                logging.info("Added payment_webhook_received to auditlogaction enum")
-        except Exception:
-            pass
+                await conn.execute(text("ALTER TABLE vpn_credentials ADD COLUMN user_uuid VARCHAR(36)"))
+                await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_vpn_credentials_user_uuid ON vpn_credentials(user_uuid)"))
+                import logging
+                logging.info("Added user_uuid column to vpn_credentials table")
         except Exception as e:
-            # Игнорируем ошибку, если значение уже существует или enum не существует
             import logging
-            logging.warning(f"Could not add backup_action to enum (may already exist): {e}")
+            logging.warning(f"Could not add user_uuid column (may already exist): {e}")
+        
+    # Таблицы ip_logs и user_bans создаются автоматически через Base.metadata.create_all
     
     # Запускаем фоновую задачу для мониторинга серверов
     async def monitor_servers():
