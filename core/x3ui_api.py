@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import logging
 from typing import Any
+from urllib.parse import quote
 
 import httpx
 
@@ -255,7 +256,11 @@ class X3UIAPI:
         """
         await self._ensure_session()
         
-        endpoint = f"{self.api_url}/inbounds/{inbound_id}/delClient/{email}"
+        # URL-кодируем email (@ -> %40)
+        encoded_email = quote(email, safe='')
+        
+        endpoint = f"{self.api_url}/inbounds/{inbound_id}/delClient/{encoded_email}"
+        logger.info(f"Удаление клиента: {endpoint}")
         
         try:
             response = await self._session.post(endpoint)
@@ -411,7 +416,8 @@ class X3UIAPI:
         """
         await self._ensure_session()
         
-        endpoint = f"{self.api_url}/inbounds/getClientTraffics/{email}"
+        encoded_email = quote(email, safe='')
+        endpoint = f"{self.api_url}/inbounds/getClientTraffics/{encoded_email}"
         
         try:
             response = await self._session.get(endpoint)
@@ -438,7 +444,8 @@ class X3UIAPI:
         """
         await self._ensure_session()
         
-        endpoint = f"{self.api_url}/inbounds/clientIps/{email}"
+        encoded_email = quote(email, safe='')
+        endpoint = f"{self.api_url}/inbounds/clientIps/{encoded_email}"
         
         try:
             response = await self._session.post(endpoint)
@@ -472,7 +479,8 @@ class X3UIAPI:
         """
         await self._ensure_session()
         
-        endpoint = f"{self.api_url}/inbounds/clearClientIps/{email}"
+        encoded_email = quote(email, safe='')
+        endpoint = f"{self.api_url}/inbounds/clearClientIps/{encoded_email}"
         
         try:
             response = await self._session.post(endpoint)
