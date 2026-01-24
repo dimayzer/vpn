@@ -2934,11 +2934,7 @@ async def purchase_subscription(
     await session.commit()
     await session.refresh(user)  # Обновляем данные пользователя в сессии
     
-    # Не генерируем VPN конфиги автоматически - пользователь выберет сервер сам
-    except Exception as e:
-        import logging
-        logging.error(f"Ошибка генерации VPN конфигов для пользователя {user.tg_id}: {e}")
-        # Не прерываем процесс покупки подписки из-за ошибки генерации конфигов
+    # Не генерируем VPN конфиги автоматически - пользователь выберет сервер и сгенерирует ключ сам
     
     # Отправляем уведомление пользователю (если включено)
     notify_on_subscription = await session.scalar(select(SystemSetting).where(SystemSetting.key == "notify_on_subscription"))
