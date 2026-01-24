@@ -762,40 +762,13 @@ async def lifespan(app: FastAPI):
                         )
                         
                         updated_count = 0
-                        for user in users_with_subs.all():
-                            # Проверяем, есть ли действительно активная подписка
-                            active_sub = await session.scalar(
-                                select(Subscription)
-                                .where(Subscription.user_id == user.id)
-                                .where(Subscription.status == SubscriptionStatus.active)
-                                .where((Subscription.ends_at.is_(None)) | (Subscription.ends_at > now))
-                                .order_by(Subscription.ends_at.desc().nullslast())
-                                .limit(1)
-                            )
-                            
-                            # Если подписка истекла, обновляем статус
-                            if not active_sub:
-                                user.has_active_subscription = False
-                                updated_count += 1
-                        
-                        # Также проверяем пользователей без активных подписок (на случай, если подписка была добавлена вручную)
-                        users_without_subs = await session.scalars(
-                            select(User)
-                            .where(User.has_active_subscription == False)
-                        )
-                        
-                        for user in users_without_subs.all():
-                            active_sub = await session.scalar(
-                                select(Subscription)
-                                .where(Subscription.user_id == user.id)
-                                .where(Subscription.status == SubscriptionStatus.active)
-                                .where((Subscription.ends_at.is_(None)) | (Subscription.ends_at > now))
-                                .limit(1)
-                            )
-                            
-                            if active_sub:
-                                user.has_active_subscription = True
-                                user.subscription_ends_at = active_sub.ends_at
+                        # Получаем всех пользователей и обновляем их статус подписки
+                        all_users = await session.scalars(select(User))
+                        for user in all_users.all():
+                            old_status = user.has_active_subscription
+                            await _update_user_subscription_status(user.id, session)
+                            await session.flush()
+                            if old_status != user.has_active_subscription:
                                 updated_count += 1
                         
                         if updated_count > 0:
@@ -1372,6 +1345,8 @@ async def _update_user_subscription_status(user_id: int, session: AsyncSession) 
     else:
         user.has_active_subscription = False
         user.subscription_ends_at = None
+        # Очищаем выбранный сервер, если подписка не активна
+        user.selected_server_id = None
 
 
 async def _validate_promo_code(code: str, user_id: int, amount_cents: int, session: AsyncSession, check_percent_usage: bool = False) -> tuple[bool, str, int]:
@@ -1568,6 +1543,7 @@ async def list_users(
                 trial_used=u.trial_used,
                 has_active_subscription=u.has_active_subscription,
                 subscription_ends_at=u.subscription_ends_at,
+                selected_server_id=u.selected_server_id,
                 created_at=u.created_at,
             )
         )
@@ -1600,6 +1576,7 @@ async def get_user_by_tg(tg_id: int, session: AsyncSession = Depends(get_session
         trial_used=user.trial_used,
         has_active_subscription=user.has_active_subscription,
         subscription_ends_at=user.subscription_ends_at,
+        selected_server_id=user.selected_server_id,
         created_at=user.created_at,
     )
 
@@ -1732,6 +1709,7 @@ async def upsert_user(payload: UserUpsertIn, session: AsyncSession = Depends(get
         trial_used=user.trial_used,
         has_active_subscription=user.has_active_subscription,
         subscription_ends_at=user.subscription_ends_at,
+        selected_server_id=user.selected_server_id,
         created_at=user.created_at,
     )
 

@@ -1428,6 +1428,12 @@ async def servers_btn(message: Message) -> None:
         settings = get_settings()
         api = CoreApi(str(settings.core_api_base), admin_token=settings.admin_token or "")
         
+        # Проверяем активную подписку
+        sub_data = await api.subscription_status(message.from_user.id)
+        if not sub_data.get("has_active", False):
+            await message.answer("❌ У вас нет активной подписки. Сначала купите подписку в разделе '📦 Тарифы'.")
+            return
+        
         # Получаем список доступных серверов
         servers_response = await api.get_available_servers()
         servers = servers_response.get("servers", [])
@@ -1438,7 +1444,11 @@ async def servers_btn(message: Message) -> None:
         
         # Получаем выбранный сервер пользователя
         user_data = await api.get_user_by_tg(message.from_user.id)
-        selected_server_id = user_data.get("selected_server_id") if user_data else None
+        if not user_data:
+            await message.answer("❌ Ошибка получения данных пользователя.")
+            return
+        
+        selected_server_id = user_data.get("selected_server_id")
         
         # Формируем сообщение со списком серверов
         text_lines = ["📡 <b>Доступные серверы</b>\n"]
@@ -1567,9 +1577,19 @@ async def key_btn(message: Message) -> None:
         settings = get_settings()
         api = CoreApi(str(settings.core_api_base), admin_token=settings.admin_token or "")
         
+        # Проверяем активную подписку
+        sub_data = await api.subscription_status(message.from_user.id)
+        if not sub_data.get("has_active", False):
+            await message.answer("❌ У вас нет активной подписки. Сначала купите подписку в разделе '📦 Тарифы'.")
+            return
+        
         # Проверяем, выбран ли сервер
         user_data = await api.get_user_by_tg(message.from_user.id)
-        selected_server_id = user_data.get("selected_server_id") if user_data else None
+        if not user_data:
+            await message.answer("❌ Ошибка получения данных пользователя.")
+            return
+        
+        selected_server_id = user_data.get("selected_server_id")
         
         if not selected_server_id:
             await message.answer(

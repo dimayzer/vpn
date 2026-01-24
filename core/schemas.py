@@ -19,6 +19,7 @@ class UserOut(BaseModel):
     trial_used: bool = False
     has_active_subscription: bool = False
     subscription_ends_at: datetime | None = None
+    selected_server_id: int | None = None
     created_at: datetime
 
 
