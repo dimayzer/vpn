@@ -7030,25 +7030,25 @@ async def _generate_vpn_config_for_user_server(user_id: int, server_id: int, ses
     
     # Если API 3x-UI не настроен, используем старый способ с UUID
     elif server.xray_uuid:
-            user_uuid = server.xray_uuid
-            config_text = generate_vless_config(
-                user_uuid=user_uuid,
-                server_host=server.host,
-                server_port=server.xray_port or 443,
-                server_uuid=server.xray_uuid,
-                server_flow=server.xray_flow,
-                server_network=server.xray_network or "tcp",
-                server_security=server.xray_security or "tls",
-                server_sni=server.xray_sni,
-                server_reality_public_key=server.xray_reality_public_key,
-                server_reality_short_id=server.xray_reality_short_id,
-                server_path=server.xray_path,
-                server_host_header=server.xray_host,
-                remark=f"{server.name}",
-            )
-        else:
-            # Пропускаем серверы без настроек
-            raise ValueError(f"Сервер {server.name} не настроен (нет API 3x-UI и UUID)")
+        user_uuid = server.xray_uuid
+        config_text = generate_vless_config(
+            user_uuid=user_uuid,
+            server_host=server.host,
+            server_port=server.xray_port or 443,
+            server_uuid=server.xray_uuid,
+            server_flow=server.xray_flow,
+            server_network=server.xray_network or "tcp",
+            server_security=server.xray_security or "tls",
+            server_sni=server.xray_sni,
+            server_reality_public_key=server.xray_reality_public_key,
+            server_reality_short_id=server.xray_reality_short_id,
+            server_path=server.xray_path,
+            server_host_header=server.xray_host,
+            remark=f"{server.name}",
+        )
+    else:
+        # Пропускаем серверы без настроек
+        raise ValueError(f"Сервер {server.name} не настроен (нет API 3x-UI и UUID)")
         
     if not config_text:
         raise ValueError(f"Не удалось сгенерировать конфиг для сервера {server.name}")
