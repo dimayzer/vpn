@@ -866,6 +866,9 @@ async def lifespan(app: FastAPI):
                         autoban_enabled_setting = await session.scalar(
                             select(SystemSetting).where(SystemSetting.key == "autoban_enabled")
                         )
+                        autoban_duration_setting = await session.scalar(
+                            select(SystemSetting).where(SystemSetting.key == "autoban_duration_hours")
+                        )
                         
                         ip_limit = 1
                         if ip_limit_setting:
@@ -877,6 +880,13 @@ async def lifespan(app: FastAPI):
                         autoban_enabled = True
                         if autoban_enabled_setting:
                             autoban_enabled = autoban_enabled_setting.value.lower() in ("true", "1", "yes")
+                        
+                        autoban_duration_hours = 24
+                        if autoban_duration_setting:
+                            try:
+                                autoban_duration_hours = int(autoban_duration_setting.value)
+                            except (ValueError, TypeError):
+                                autoban_duration_hours = 24
                         
                         # Получаем все активные серверы с 3x-UI API
                         servers = await session.scalars(
@@ -965,7 +975,7 @@ async def lifespan(app: FastAPI):
                                                     details=f"Обнаружено {len(ips)} IP адресов (лимит: {ip_limit}). IP: {', '.join(ips)}",
                                                     is_active=True,
                                                     auto_ban=True,
-                                                    banned_until=now + timedelta(hours=24)  # Бан на 24 часа
+                                                    banned_until=now + timedelta(hours=autoban_duration_hours)
                                                 )
                                                 session.add(ban)
                                                 
@@ -977,7 +987,7 @@ async def lifespan(app: FastAPI):
                                                 notification_text = (
                                                     "⚠️ <b>Ваш аккаунт временно заблокирован</b>\n\n"
                                                     f"Причина: превышен лимит одновременных подключений ({len(ips)} из {ip_limit})\n"
-                                                    f"Блокировка снимется автоматически через 24 часа.\n\n"
+                                                    f"Блокировка снимется автоматически через {autoban_duration_hours} ч.\n\n"
                                                     "Если вы считаете это ошибкой, обратитесь в поддержку."
                                                 )
                                                 asyncio.create_task(_send_user_notification(cred.user.tg_id, notification_text))

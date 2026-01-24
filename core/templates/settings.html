@@ -265,6 +265,33 @@
                 </div>
                 
                 <div class="section">
+                    <h2 class="section-title">🛡️ Настройки VPN и безопасности</h2>
+                    <div class="form-group">
+                        <label for="vpn_limit_ip">Лимит одновременных IP адресов</label>
+                        <input type="number" id="vpn_limit_ip" name="vpn_limit_ip" value="{{ settings.get('vpn_limit_ip', '1') }}" placeholder="1" min="1" max="10">
+                        <small>Максимальное количество одновременных IP адресов для одного пользователя. При превышении — автобан.</small>
+                    </div>
+                    <div class="form-group">
+                        <label for="autoban_enabled">Автоматический бан при превышении лимита IP</label>
+                        <select id="autoban_enabled" name="autoban_enabled">
+                            <option value="true" {% if settings.get('autoban_enabled', 'true') == 'true' %}selected{% endif %}>Включено</option>
+                            <option value="false" {% if settings.get('autoban_enabled', 'true') == 'false' %}selected{% endif %}>Выключено</option>
+                        </select>
+                        <small>Автоматически банить пользователей при превышении лимита одновременных IP адресов</small>
+                    </div>
+                    <div class="form-group">
+                        <label for="autoban_duration_hours">Длительность автобана (часов)</label>
+                        <input type="number" id="autoban_duration_hours" name="autoban_duration_hours" value="{{ settings.get('autoban_duration_hours', '24') }}" placeholder="24" min="1" max="720">
+                        <small>На сколько часов блокировать VPN доступ при автобане (1-720 часов)</small>
+                    </div>
+                    <div class="form-group">
+                        <label for="ip_monitor_interval_minutes">Интервал проверки IP (минут)</label>
+                        <input type="number" id="ip_monitor_interval_minutes" name="ip_monitor_interval_minutes" value="{{ settings.get('ip_monitor_interval_minutes', '5') }}" placeholder="5" min="1" max="60">
+                        <small>Как часто проверять IP адреса пользователей для автобана</small>
+                    </div>
+                </div>
+                
+                <div class="section">
                     <h2 class="section-title">⚙️ Дополнительные настройки</h2>
                     <div class="form-group">
                         <label for="trial_days">Длительность пробного периода (дней)</label>

@@ -554,7 +554,7 @@
                                 {% if server.is_online %}🟢 Онлайн{% else %}🔴 Офлайн{% endif %}
                             </span>
                         </div>
-                        <p style="margin: 5px 0; color: #666; font-size: 0.9em;">
+                        <p style="margin: 5px 0; color: rgba(255,255,255,0.9); font-size: 0.9em;">
                             <strong>Хост:</strong> {{ server.host }}<br>
                             <strong>Локация:</strong> {{ server.location }}<br>
                             {% if server.response_time_ms %}
@@ -565,7 +565,7 @@
                             <strong>Проверено:</strong> {{ server.checked_at }}<br>
                             {% endif %}
                             {% if server.error_message %}
-                            <span style="color: #e74c3c; font-size: 0.85em;">⚠️ {{ server.error_message }}</span>
+                            <span style="color: #ff6b6b; font-size: 0.85em;">⚠️ {{ server.error_message }}</span>
                             {% endif %}
                         </p>
                     </div>
