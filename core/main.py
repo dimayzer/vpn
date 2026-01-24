@@ -2934,9 +2934,7 @@ async def purchase_subscription(
     await session.commit()
     await session.refresh(user)  # Обновляем данные пользователя в сессии
     
-    # Генерируем VPN конфиги для пользователя
-    try:
-        await _generate_vpn_configs_for_user(user.id, session, ends_at)
+    # Не генерируем VPN конфиги автоматически - пользователь выберет сервер сам
     except Exception as e:
         import logging
         logging.error(f"Ошибка генерации VPN конфигов для пользователя {user.tg_id}: {e}")
@@ -6930,41 +6928,40 @@ async def admin_web_restore_backup(
     return JSONResponse({"success": True, "message": "Восстановление запущено. Это может занять несколько минут."})
 
 
-async def _generate_vpn_configs_for_user(user_id: int, session: AsyncSession, expires_at: datetime):
-    """Генерирует VPN конфиги для пользователя на всех активных серверах"""
+async def _generate_vpn_config_for_user_server(user_id: int, server_id: int, session: AsyncSession, expires_at: datetime):
+    """Генерирует VPN конфиг для пользователя на указанном сервере"""
     import json
-    # Получаем все активные серверы
-    servers = await session.scalars(
+    # Получаем конкретный сервер
+    server = await session.scalar(
         select(Server)
+        .where(Server.id == server_id)
         .where(Server.is_enabled == True)
         .where(
             (Server.x3ui_api_url.isnot(None)) | (Server.xray_uuid.isnot(None))
-        )  # Сервер должен иметь либо API 3x-UI, либо UUID
+        )
     )
-    servers_list = servers.all()
     
-    if not servers_list:
-        return  # Нет активных серверов
+    if not server:
+        raise ValueError(f"Сервер {server_id} не найден или не активен")
     
     user = await session.get(User, user_id)
     if not user:
         return
     
-    # Создаем конфиги для каждого сервера
-    for server in servers_list:
-        # Проверяем, нет ли уже активного конфига для этого сервера
-        existing = await session.scalar(
-            select(VpnCredential)
-            .where(VpnCredential.user_id == user_id)
-            .where(VpnCredential.server_id == server.id)
-            .where(VpnCredential.active == True)
-        )
-        
-        config_text = None
-        user_uuid = None
-        
-        # Если сервер использует API 3x-UI - создаем клиента автоматически
-        if server.x3ui_api_url and server.x3ui_username and server.x3ui_password:
+    # Создаем конфиг для сервера
+    # Проверяем, нет ли уже активного конфига для этого сервера
+    existing = await session.scalar(
+        select(VpnCredential)
+        .where(VpnCredential.user_id == user_id)
+        .where(VpnCredential.server_id == server.id)
+        .where(VpnCredential.active == True)
+    )
+    
+    config_text = None
+    user_uuid = None
+    
+    # Если сервер использует API 3x-UI - создаем клиента автоматически
+    if server.x3ui_api_url and server.x3ui_username and server.x3ui_password:
             from core.x3ui_api import X3UIAPI
             from core.xray import generate_uuid
             
@@ -6993,7 +6990,7 @@ async def _generate_vpn_configs_for_user(user_id: int, session: AsyncSession, ex
                         await session.commit()
                     else:
                         logger.warning(f"Не удалось найти Inbound для сервера {server.name} (порт {port}, протокол {protocol})")
-                        continue
+                        raise ValueError(f"Inbound не найден для сервера {server.name}")
                 
                 # Генерируем уникальный email для клиента
                 client_email = f"user_{user_id}_server_{server.id}@fiorevpn"
@@ -7013,8 +7010,8 @@ async def _generate_vpn_configs_for_user(user_id: int, session: AsyncSession, ex
                     user_uuid = client_data.get("id") or client_data.get("uuid")
                     
                     if not user_uuid:
-                        logger.warning(f"Не удалось получить UUID для клиента {client_email} из ответа API 3x-UI, пропускаем сервер {server.name}")
-                        continue
+                        logger.warning(f"Не удалось получить UUID для клиента {client_email} из ответа API 3x-UI")
+                        raise ValueError(f"Не удалось получить UUID для клиента на сервере {server.name}")
                     
                     # Получаем конфиг через API (параметры берутся из Inbound автоматически)
                     config_text = await x3ui.get_client_config(
@@ -7025,15 +7022,15 @@ async def _generate_vpn_configs_for_user(user_id: int, session: AsyncSession, ex
                     )
                     
                     if not config_text:
-                        logger.warning(f"Не удалось получить конфиг для клиента {client_email} на сервере {server.name}, пропускаем")
-                        continue
+                        logger.warning(f"Не удалось получить конфиг для клиента {client_email} на сервере {server.name}")
+                        raise ValueError(f"Не удалось получить конфиг для клиента на сервере {server.name}")
                 else:
                     # Клиент не был создан (инбаунд не найден или другая ошибка)
-                    logger.warning(f"Не удалось создать клиента через API 3x-UI для сервера {server.name} (ID: {server.id}, Inbound ID: {server.x3ui_inbound_id}), пропускаем")
-                    continue
+                    logger.warning(f"Не удалось создать клиента через API 3x-UI для сервера {server.name} (ID: {server.id}, Inbound ID: {server.x3ui_inbound_id})")
+                    raise ValueError(f"Не удалось создать клиента на сервере {server.name}")
             except Exception as e:
-                logger.warning(f"Ошибка при создании клиента через API 3x-UI для сервера {server.name}: {e}, пропускаем")
-                continue
+                logger.warning(f"Ошибка при создании клиента через API 3x-UI для сервера {server.name}: {e}")
+                raise
         
         # Если API 3x-UI не настроен, используем старый способ с UUID
         elif server.xray_uuid:
@@ -7055,25 +7052,25 @@ async def _generate_vpn_configs_for_user(user_id: int, session: AsyncSession, ex
             )
         else:
             # Пропускаем серверы без настроек
-            continue
+            raise ValueError(f"Сервер {server.name} не настроен (нет API 3x-UI и UUID)")
         
-        if not config_text:
-            continue
-        
-        if existing:
-            # Обновляем существующий конфиг
-            existing.expires_at = expires_at
-            existing.config_text = config_text
-        else:
-            # Создаем новый конфиг
-            credential = VpnCredential(
-                user_id=user_id,
-                server_id=server.id,
-                config_text=config_text,
-                active=True,
-                expires_at=expires_at,
-            )
-            session.add(credential)
+    if not config_text:
+        raise ValueError(f"Не удалось сгенерировать конфиг для сервера {server.name}")
+    
+    if existing:
+        # Обновляем существующий конфиг
+        existing.expires_at = expires_at
+        existing.config_text = config_text
+    else:
+        # Создаем новый конфиг
+        credential = VpnCredential(
+            user_id=user_id,
+            server_id=server.id,
+            config_text=config_text,
+            active=True,
+            expires_at=expires_at,
+        )
+        session.add(credential)
     
     await session.commit()
 
@@ -7407,6 +7404,283 @@ async def admin_api_server_history(
         "server_name": server.name,
         "history": history,
     }
+
+
+@app.get("/servers/available")
+async def get_available_servers(
+    session: AsyncSession = Depends(get_session),
+):
+    """Получить список доступных серверов для пользователей"""
+    servers_result = await session.scalars(
+        select(Server)
+        .where(Server.is_enabled == True)
+        .where(
+            (Server.x3ui_api_url.isnot(None)) | (Server.xray_uuid.isnot(None))
+        )  # Сервер должен иметь либо API 3x-UI, либо UUID
+        .order_by(Server.name)
+    )
+    servers = servers_result.all()
+    
+    # Получаем последние статусы
+    servers_list = []
+    for server in servers:
+        last_status = await session.scalar(
+            select(ServerStatus)
+            .where(ServerStatus.server_id == server.id)
+            .order_by(ServerStatus.checked_at.desc())
+        )
+        server_dict = {
+            "id": server.id,
+            "name": server.name,
+            "host": server.host,
+            "location": server.location,
+            "capacity": server.capacity,
+        }
+        if last_status:
+            server_dict["status"] = {
+                "is_online": last_status.is_online,
+                "response_time_ms": last_status.response_time_ms,
+            }
+        else:
+            server_dict["status"] = {
+                "is_online": False,
+                "response_time_ms": None,
+            }
+        servers_list.append(server_dict)
+    
+    return {"servers": servers_list}
+
+
+@app.post("/users/{tg_id}/select-server")
+async def select_server_for_user(
+    tg_id: int,
+    payload: dict,
+    session: AsyncSession = Depends(get_session),
+):
+    """Установить выбранный сервер для пользователя"""
+    user = await session.scalar(select(User).where(User.tg_id == tg_id))
+    if not user:
+        raise HTTPException(status_code=404, detail="user_not_found")
+    
+    server_id = payload.get("server_id")
+    if not server_id:
+        raise HTTPException(status_code=400, detail="server_id_required")
+    
+    # Проверяем, что сервер существует и активен
+    server = await session.scalar(
+        select(Server)
+        .where(Server.id == server_id)
+        .where(Server.is_enabled == True)
+    )
+    if not server:
+        raise HTTPException(status_code=404, detail="server_not_found")
+    
+    # Устанавливаем выбранный сервер
+    user.selected_server_id = server_id
+    await session.commit()
+    
+    return {"success": True, "server_id": server_id, "server_name": server.name}
+
+
+@app.get("/users/{tg_id}/vpn-key")
+async def get_user_vpn_key(
+    tg_id: int,
+    session: AsyncSession = Depends(get_session),
+):
+    """Получить VPN ключ пользователя"""
+    user = await session.scalar(select(User).where(User.tg_id == tg_id))
+    if not user:
+        raise HTTPException(status_code=404, detail="user_not_found")
+    
+    if not user.selected_server_id:
+        return {"key": None, "server_name": None}
+    
+    # Получаем активный ключ для выбранного сервера
+    credential = await session.scalar(
+        select(VpnCredential)
+        .where(VpnCredential.user_id == user.id)
+        .where(VpnCredential.server_id == user.selected_server_id)
+        .where(VpnCredential.active == True)
+        .order_by(VpnCredential.created_at.desc())
+    )
+    
+    server = await session.get(Server, user.selected_server_id)
+    server_name = server.name if server else None
+    
+    if credential and credential.config_text:
+        return {"key": credential.config_text, "server_name": server_name}
+    
+    return {"key": None, "server_name": server_name}
+
+
+@app.post("/users/{tg_id}/vpn-key/generate")
+async def generate_user_vpn_key(
+    tg_id: int,
+    session: AsyncSession = Depends(get_session),
+):
+    """Сгенерировать VPN ключ для пользователя"""
+    user = await session.scalar(select(User).where(User.tg_id == tg_id))
+    if not user:
+        raise HTTPException(status_code=404, detail="user_not_found")
+    
+    if not user.selected_server_id:
+        raise HTTPException(status_code=400, detail="server_not_selected")
+    
+    # Проверяем активную подписку
+    if not user.has_active_subscription or not user.subscription_ends_at:
+        raise HTTPException(status_code=403, detail="no_active_subscription")
+    
+    from datetime import datetime, timezone
+    if user.subscription_ends_at < datetime.now(timezone.utc):
+        raise HTTPException(status_code=403, detail="subscription_expired")
+    
+    # Получаем сервер
+    server = await session.get(Server, user.selected_server_id)
+    if not server or not server.is_enabled:
+        raise HTTPException(status_code=404, detail="server_not_found")
+    
+    # Деактивируем старые ключи для этого сервера
+    old_credentials = await session.scalars(
+        select(VpnCredential)
+        .where(VpnCredential.user_id == user.id)
+        .where(VpnCredential.server_id == user.selected_server_id)
+        .where(VpnCredential.active == True)
+    )
+    for old_cred in old_credentials.all():
+        old_cred.active = False
+    
+    # Генерируем новый ключ
+    await _generate_vpn_config_for_user_server(user.id, user.selected_server_id, session, user.subscription_ends_at)
+    
+    # Получаем созданный ключ
+    credential = await session.scalar(
+        select(VpnCredential)
+        .where(VpnCredential.user_id == user.id)
+        .where(VpnCredential.server_id == user.selected_server_id)
+        .where(VpnCredential.active == True)
+        .order_by(VpnCredential.created_at.desc())
+    )
+    
+    if not credential or not credential.config_text:
+        raise HTTPException(status_code=500, detail="key_generation_failed")
+    
+    return {"key": credential.config_text, "server_name": server.name}
+
+
+@app.post("/users/{tg_id}/select-server")
+async def select_server_for_user(
+    tg_id: int,
+    payload: dict,
+    session: AsyncSession = Depends(get_session),
+):
+    """Установить выбранный сервер для пользователя"""
+    user = await session.scalar(select(User).where(User.tg_id == tg_id))
+    if not user:
+        raise HTTPException(status_code=404, detail="user_not_found")
+    
+    server_id = payload.get("server_id")
+    if not server_id:
+        raise HTTPException(status_code=400, detail="server_id_required")
+    
+    # Проверяем, что сервер существует и активен
+    server = await session.scalar(
+        select(Server)
+        .where(Server.id == server_id)
+        .where(Server.is_enabled == True)
+    )
+    if not server:
+        raise HTTPException(status_code=404, detail="server_not_found")
+    
+    # Устанавливаем выбранный сервер
+    user.selected_server_id = server_id
+    await session.commit()
+    
+    return {"success": True, "server_id": server_id, "server_name": server.name}
+
+
+@app.get("/users/{tg_id}/vpn-key")
+async def get_user_vpn_key(
+    tg_id: int,
+    session: AsyncSession = Depends(get_session),
+):
+    """Получить VPN ключ пользователя"""
+    user = await session.scalar(select(User).where(User.tg_id == tg_id))
+    if not user:
+        raise HTTPException(status_code=404, detail="user_not_found")
+    
+    if not user.selected_server_id:
+        return {"key": None, "server_name": None}
+    
+    # Получаем активный ключ для выбранного сервера
+    credential = await session.scalar(
+        select(VpnCredential)
+        .where(VpnCredential.user_id == user.id)
+        .where(VpnCredential.server_id == user.selected_server_id)
+        .where(VpnCredential.active == True)
+        .order_by(VpnCredential.created_at.desc())
+    )
+    
+    server = await session.get(Server, user.selected_server_id)
+    server_name = server.name if server else None
+    
+    if credential and credential.config_text:
+        return {"key": credential.config_text, "server_name": server_name}
+    
+    return {"key": None, "server_name": server_name}
+
+
+@app.post("/users/{tg_id}/vpn-key/generate")
+async def generate_user_vpn_key(
+    tg_id: int,
+    session: AsyncSession = Depends(get_session),
+):
+    """Сгенерировать VPN ключ для пользователя"""
+    user = await session.scalar(select(User).where(User.tg_id == tg_id))
+    if not user:
+        raise HTTPException(status_code=404, detail="user_not_found")
+    
+    if not user.selected_server_id:
+        raise HTTPException(status_code=400, detail="server_not_selected")
+    
+    # Проверяем активную подписку
+    if not user.has_active_subscription or not user.subscription_ends_at:
+        raise HTTPException(status_code=403, detail="no_active_subscription")
+    
+    from datetime import datetime, timezone
+    if user.subscription_ends_at < datetime.now(timezone.utc):
+        raise HTTPException(status_code=403, detail="subscription_expired")
+    
+    # Получаем сервер
+    server = await session.get(Server, user.selected_server_id)
+    if not server or not server.is_enabled:
+        raise HTTPException(status_code=404, detail="server_not_found")
+    
+    # Деактивируем старые ключи для этого сервера
+    old_credentials = await session.scalars(
+        select(VpnCredential)
+        .where(VpnCredential.user_id == user.id)
+        .where(VpnCredential.server_id == user.selected_server_id)
+        .where(VpnCredential.active == True)
+    )
+    for old_cred in old_credentials.all():
+        old_cred.active = False
+    
+    # Генерируем новый ключ
+    await _generate_vpn_config_for_user_server(user.id, user.selected_server_id, session, user.subscription_ends_at)
+    
+    # Получаем созданный ключ
+    credential = await session.scalar(
+        select(VpnCredential)
+        .where(VpnCredential.user_id == user.id)
+        .where(VpnCredential.server_id == user.selected_server_id)
+        .where(VpnCredential.active == True)
+        .order_by(VpnCredential.created_at.desc())
+    )
+    
+    if not credential or not credential.config_text:
+        raise HTTPException(status_code=500, detail="key_generation_failed")
+    
+    return {"key": credential.config_text, "server_name": server.name}
 
 
 @app.get("/users/{tg_id}/vpn-configs")

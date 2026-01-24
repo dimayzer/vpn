@@ -47,6 +47,7 @@ class User(Base):
     trial_used: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)  # Использован ли пробный период
     has_active_subscription: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, index=True)  # Есть ли активная подписка
     subscription_ends_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)  # Дата окончания активной подписки
+    selected_server_id: Mapped[int | None] = mapped_column(ForeignKey("servers.id", ondelete="SET NULL"), nullable=True, index=True)  # Выбранный сервер пользователем
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
 
     subscriptions: Mapped[list["Subscription"]] = relationship("Subscription", back_populates="user")

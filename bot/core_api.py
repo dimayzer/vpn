@@ -46,6 +46,13 @@ class CoreApi:
             r.raise_for_status()
             return r.json()
     
+    async def get_available_servers(self) -> dict[str, Any]:
+        """Получить список доступных серверов"""
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            r = await client.get(f"{self._base_url}/servers/available")
+            r.raise_for_status()
+            return r.json()
+    
     async def purchase_subscription(self, tg_id: int, plan_months: int, promo_code: str | None = None) -> dict[str, Any]:
         """Покупка подписки"""
         async with httpx.AsyncClient(timeout=10.0) as client:
@@ -56,6 +63,30 @@ class CoreApi:
                 f"{self._base_url}/subscriptions/purchase",
                 json=payload
             )
+            r.raise_for_status()
+            return r.json()
+    
+    async def set_selected_server(self, tg_id: int, server_id: int) -> dict[str, Any]:
+        """Установить выбранный сервер для пользователя"""
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            r = await client.post(
+                f"{self._base_url}/users/{tg_id}/select-server",
+                json={"server_id": server_id}
+            )
+            r.raise_for_status()
+            return r.json()
+    
+    async def get_user_vpn_key(self, tg_id: int) -> dict[str, Any]:
+        """Получить VPN ключ пользователя"""
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            r = await client.get(f"{self._base_url}/users/{tg_id}/vpn-key")
+            r.raise_for_status()
+            return r.json()
+    
+    async def generate_vpn_key(self, tg_id: int) -> dict[str, Any]:
+        """Сгенерировать новый VPN ключ для пользователя"""
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            r = await client.post(f"{self._base_url}/users/{tg_id}/vpn-key/generate")
             r.raise_for_status()
             return r.json()
     

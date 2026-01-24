@@ -23,6 +23,8 @@ from bot.keyboards import (
     BTN_TICKET,
     BTN_PROMO,
     BTN_ADMIN,
+    BTN_SERVERS,
+    BTN_KEY,
 )
 from bot.states import AdminUsers, AdminLogs, UserTicket, UserPromoCode, UserPayment, UserSubscription
 
@@ -62,9 +64,21 @@ async def start(message: Message) -> None:
         pass
 
     is_admin = bool(message.from_user) and message.from_user.id in set(get_settings().admin_ids)
+    
+    # Проверяем наличие активной подписки
+    has_subscription = False
+    try:
+        settings = get_settings()
+        api = CoreApi(str(settings.core_api_base), admin_token=settings.admin_token or "")
+        if message.from_user:
+            status = await api.subscription_status(message.from_user.id)
+            has_subscription = status.get("has_active", False)
+    except Exception:
+        pass  # Игнорируем ошибки при проверке подписки
+    
     await message.answer(
         welcome_message,
-        reply_markup=user_menu(is_admin=is_admin),
+        reply_markup=user_menu(is_admin=is_admin, has_subscription=has_subscription),
     )
 
 
@@ -1191,14 +1205,22 @@ async def buy_plan_handler(callback: CallbackQuery) -> None:
             ends_str = ends_at
         
         await callback.answer("✅ Подписка активирована!", show_alert=True)
+        # Удаляем сообщение с тарифами
+        try:
+            await callback.message.delete()
+        except Exception:
+            pass
+        # Отправляем новое сообщение с подтверждением и обновляем меню
+        is_admin = callback.from_user.id in set(get_settings().admin_ids)
         await callback.message.answer(
             f"✅ <b>Подписка успешно активирована!</b>\n\n"
             f"📦 Тариф: <b>{plan_name}</b>\n"
             f"💰 Стоимость: {price_rub:.0f} RUB\n"
             f"📅 Действует до: {ends_str} МСК\n"
             f"💵 Остаток баланса: {balance_remaining:.2f} RUB\n\n"
-            f"Используйте /status для проверки статуса подписки.",
-            parse_mode="HTML"
+            f"Теперь вы можете выбрать сервер и получить ключ в меню.",
+            parse_mode="HTML",
+            reply_markup=user_menu(is_admin=is_admin, has_subscription=True)
         )
     except Exception as e:
         import logging
@@ -1377,6 +1399,324 @@ async def topup_handler(callback: CallbackQuery) -> None:
         reply_markup=keyboard,
         parse_mode="HTML"
     )
+
+
+@router.message(F.text == BTN_SERVERS)
+async def servers_btn(message: Message) -> None:
+    """Показать список серверов для выбора"""
+    if not message.from_user:
+        return
+    
+    try:
+        settings = get_settings()
+        api = CoreApi(str(settings.core_api_base), admin_token=settings.admin_token or "")
+        
+        # Получаем список доступных серверов
+        servers_response = await api.get_available_servers()
+        servers = servers_response.get("servers", [])
+        
+        if not servers:
+            await message.answer("❌ Нет доступных серверов. Обратитесь в поддержку.")
+            return
+        
+        # Получаем выбранный сервер пользователя
+        user_data = await api.get_user_by_tg(message.from_user.id)
+        selected_server_id = user_data.get("selected_server_id") if user_data else None
+        
+        # Формируем сообщение со списком серверов
+        text_lines = ["📡 <b>Доступные серверы</b>\n"]
+        
+        # Формируем клавиатуру с кнопками выбора серверов
+        from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
+        keyboard_buttons = []
+        
+        for server in servers:
+            server_id = server.get("id")
+            server_name = server.get("name", f"Сервер {server_id}")
+            location = server.get("location", "")
+            status = server.get("status", {})
+            is_online = status.get("is_online", False)
+            response_time = status.get("response_time_ms")
+            
+            # Индикатор статуса
+            status_emoji = "🟢" if is_online else "🔴"
+            status_text = "Онлайн" if is_online else "Оффлайн"
+            
+            # Пинг
+            ping_text = ""
+            if response_time is not None:
+                ping_text = f" | Пинг: {response_time} мс"
+            
+            # Отметка выбранного сервера
+            selected_mark = " ✅" if selected_server_id == server_id else ""
+            
+            # Текст для кнопки
+            button_text = f"{status_emoji} {server_name}"
+            if location:
+                button_text += f" ({location})"
+            button_text += selected_mark
+            
+            keyboard_buttons.append([KeyboardButton(text=button_text)])
+            
+            # Текст для сообщения
+            line = f"{status_emoji} <b>{server_name}</b>"
+            if location:
+                line += f" ({location})"
+            line += f"\n   Статус: {status_text}{ping_text}{selected_mark}"
+            text_lines.append(line)
+        
+        keyboard = ReplyKeyboardMarkup(
+            keyboard=keyboard_buttons,
+            resize_keyboard=True,
+            is_persistent=True
+        )
+        
+        await message.answer(
+            "\n".join(text_lines),
+            parse_mode="HTML",
+            reply_markup=keyboard
+        )
+    except Exception as e:
+        import logging
+        logging.error(f"Ошибка при получении списка серверов: {e}", exc_info=True)
+        await message.answer("❌ Ошибка при загрузке серверов. Попробуйте позже.")
+
+
+@router.message(F.text.startswith("🟢") | F.text.startswith("🔴"))
+async def select_server_handler(message: Message) -> None:
+    """Обработка выбора сервера по кнопке"""
+    if not message.from_user:
+        return
+    
+    try:
+        settings = get_settings()
+        api = CoreApi(str(settings.core_api_base), admin_token=settings.admin_token or "")
+        
+        # Получаем список серверов
+        servers_response = await api.get_available_servers()
+        servers = servers_response.get("servers", [])
+        
+        # Находим сервер по тексту кнопки
+        selected_server = None
+        for server in servers:
+            server_name = server.get("name", f"Сервер {server.get('id')}")
+            location = server.get("location", "")
+            button_text = f"{'🟢' if server.get('status', {}).get('is_online', False) else '🔴'} {server_name}"
+            if location:
+                button_text += f" ({location})"
+            
+            # Проверяем совпадение (убираем отметку выбранного)
+            message_text = message.text.replace(" ✅", "").strip()
+            if message_text == button_text or message_text.startswith(button_text.split(" (")[0]):
+                selected_server = server
+                break
+        
+        if not selected_server:
+            await message.answer("❌ Сервер не найден. Попробуйте выбрать из списка.")
+            return
+        
+        server_id = selected_server.get("id")
+        server_name = selected_server.get("name", f"Сервер {server_id}")
+        
+        # Устанавливаем выбранный сервер
+        await api.set_selected_server(message.from_user.id, server_id)
+        
+        await message.answer(
+            f"✅ Сервер <b>{server_name}</b> выбран!\n\n"
+            f"Теперь вы можете сгенерировать ключ в разделе '🔑 Ключ'.",
+            parse_mode="HTML"
+        )
+    except Exception as e:
+        import logging
+        logging.error(f"Ошибка при выборе сервера: {e}", exc_info=True)
+        await message.answer("❌ Ошибка при выборе сервера. Попробуйте позже.")
+
+
+@router.message(F.text == BTN_KEY)
+async def key_btn(message: Message) -> None:
+    """Показать/сгенерировать VPN ключ"""
+    if not message.from_user:
+        return
+    
+    try:
+        settings = get_settings()
+        api = CoreApi(str(settings.core_api_base), admin_token=settings.admin_token or "")
+        
+        # Проверяем, выбран ли сервер
+        user_data = await api.get_user_by_tg(message.from_user.id)
+        selected_server_id = user_data.get("selected_server_id") if user_data else None
+        
+        if not selected_server_id:
+            await message.answer(
+                "❌ Сначала выберите сервер в разделе '📡 Сервера'."
+            )
+            return
+        
+        # Получаем текущий ключ
+        try:
+            key_data = await api.get_user_vpn_key(message.from_user.id)
+            vpn_key = key_data.get("key")
+            server_name = key_data.get("server_name", "Сервер")
+            
+            if vpn_key:
+                # Ключ уже есть - показываем его и кнопку "Сменить ключ"
+                from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+                keyboard = InlineKeyboardMarkup(inline_keyboard=[[
+                    InlineKeyboardButton(
+                        text="🔄 Сменить ключ",
+                        callback_data=f"regenerate_key_{message.from_user.id}"
+                    )
+                ]])
+                
+                await message.answer(
+                    f"🔑 <b>Ваш VPN ключ</b>\n\n"
+                    f"Сервер: <b>{server_name}</b>\n\n"
+                    f"<code>{vpn_key}</code>\n\n"
+                    f"Используйте этот ключ для подключения к VPN.",
+                    parse_mode="HTML",
+                    reply_markup=keyboard
+                )
+            else:
+                # Ключа нет - показываем кнопку "Сгенерировать ключ"
+                from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+                keyboard = InlineKeyboardMarkup(inline_keyboard=[[
+                    InlineKeyboardButton(
+                        text="🔑 Сгенерировать ключ",
+                        callback_data=f"generate_key_{message.from_user.id}"
+                    )
+                ]])
+                
+                await message.answer(
+                    f"🔑 <b>Генерация VPN ключа</b>\n\n"
+                    f"Сервер: <b>{server_name}</b>\n\n"
+                    f"Нажмите кнопку ниже, чтобы сгенерировать ключ:",
+                    parse_mode="HTML",
+                    reply_markup=keyboard
+                )
+        except Exception as e:
+            import logging
+            logging.error(f"Ошибка при получении ключа: {e}", exc_info=True)
+            # Если ключа нет, показываем кнопку генерации
+            from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+            keyboard = InlineKeyboardMarkup(inline_keyboard=[[
+                InlineKeyboardButton(
+                    text="🔑 Сгенерировать ключ",
+                    callback_data=f"generate_key_{message.from_user.id}"
+                )
+            ]])
+            
+            await message.answer(
+                "🔑 <b>Генерация VPN ключа</b>\n\n"
+                "Нажмите кнопку ниже, чтобы сгенерировать ключ:",
+                parse_mode="HTML",
+                reply_markup=keyboard
+            )
+    except Exception as e:
+        import logging
+        logging.error(f"Ошибка в key_btn: {e}", exc_info=True)
+        await message.answer("❌ Ошибка. Попробуйте позже.")
+
+
+@router.callback_query(F.data.startswith("generate_key_"))
+async def generate_key_handler(callback: CallbackQuery) -> None:
+    """Генерация VPN ключа"""
+    if not callback.from_user:
+        await callback.answer("Ошибка")
+        return
+    
+    parts = callback.data.split("_")
+    tg_id = int(parts[2])
+    
+    if callback.from_user.id != tg_id:
+        await callback.answer("Нет доступа", show_alert=True)
+        return
+    
+    try:
+        settings = get_settings()
+        api = CoreApi(str(settings.core_api_base), admin_token=settings.admin_token or "")
+        
+        # Генерируем ключ
+        result = await api.generate_vpn_key(callback.from_user.id)
+        vpn_key = result.get("key")
+        server_name = result.get("server_name", "Сервер")
+        
+        if not vpn_key:
+            await callback.answer("❌ Не удалось сгенерировать ключ", show_alert=True)
+            return
+        
+        # Обновляем сообщение
+        from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(
+                text="🔄 Сменить ключ",
+                callback_data=f"regenerate_key_{tg_id}"
+            )
+        ]])
+        
+        await callback.message.edit_text(
+            f"🔑 <b>Ваш VPN ключ</b>\n\n"
+            f"Сервер: <b>{server_name}</b>\n\n"
+            f"<code>{vpn_key}</code>\n\n"
+            f"Используйте этот ключ для подключения к VPN.",
+            parse_mode="HTML",
+            reply_markup=keyboard
+        )
+        await callback.answer("✅ Ключ сгенерирован!")
+    except Exception as e:
+        import logging
+        logging.error(f"Ошибка при генерации ключа: {e}", exc_info=True)
+        await callback.answer("❌ Ошибка при генерации ключа", show_alert=True)
+
+
+@router.callback_query(F.data.startswith("regenerate_key_"))
+async def regenerate_key_handler(callback: CallbackQuery) -> None:
+    """Перегенерация VPN ключа"""
+    if not callback.from_user:
+        await callback.answer("Ошибка")
+        return
+    
+    parts = callback.data.split("_")
+    tg_id = int(parts[2])
+    
+    if callback.from_user.id != tg_id:
+        await callback.answer("Нет доступа", show_alert=True)
+        return
+    
+    try:
+        settings = get_settings()
+        api = CoreApi(str(settings.core_api_base), admin_token=settings.admin_token or "")
+        
+        # Генерируем новый ключ
+        result = await api.generate_vpn_key(callback.from_user.id)
+        vpn_key = result.get("key")
+        server_name = result.get("server_name", "Сервер")
+        
+        if not vpn_key:
+            await callback.answer("❌ Не удалось сгенерировать ключ", show_alert=True)
+            return
+        
+        # Обновляем сообщение
+        from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(
+                text="🔄 Сменить ключ",
+                callback_data=f"regenerate_key_{tg_id}"
+            )
+        ]])
+        
+        await callback.message.edit_text(
+            f"🔑 <b>Ваш VPN ключ</b>\n\n"
+            f"Сервер: <b>{server_name}</b>\n\n"
+            f"<code>{vpn_key}</code>\n\n"
+            f"Используйте этот ключ для подключения к VPN.",
+            parse_mode="HTML",
+            reply_markup=keyboard
+        )
+        await callback.answer("✅ Ключ обновлен!")
+    except Exception as e:
+        import logging
+        logging.error(f"Ошибка при перегенерации ключа: {e}", exc_info=True)
+        await callback.answer("❌ Ошибка при обновлении ключа", show_alert=True)
 
 
 def register(dp: Dispatcher) -> None:

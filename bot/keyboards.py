@@ -14,6 +14,8 @@ BTN_TICKET = "🧾 Тикет"
 BTN_PROMO = "🎟️ Промокод"
 BTN_ADMIN = "🛠 Админка"
 BTN_CABINET = "💼 Личный кабинет"
+BTN_SERVERS = "📡 Сервера"
+BTN_KEY = "🔑 Ключ"
 BTN_PAYMENTS_HISTORY = "💳 История платежей"
 BTN_BACK_TO_PROFILE = "⬅️ Назад в профиль"
 
@@ -36,13 +38,16 @@ BTN_NEXT = "➡️"
 BTN_SEARCH = "🔎 Поиск по tg_id"
 
 
-def user_menu(is_admin: bool = False) -> ReplyKeyboardMarkup:
+def user_menu(is_admin: bool = False, has_subscription: bool = False) -> ReplyKeyboardMarkup:
     keyboard = [
         [KeyboardButton(text=BTN_PLANS), KeyboardButton(text=BTN_TOPUP)],
         [KeyboardButton(text=BTN_STATUS), KeyboardButton(text=BTN_PROFILE)],
         [KeyboardButton(text=BTN_REF), KeyboardButton(text=BTN_TICKET)],
         [KeyboardButton(text=BTN_PROMO), KeyboardButton(text=BTN_HELP)],
     ]
+    # Добавляем кнопки для пользователей с активной подпиской
+    if has_subscription:
+        keyboard.insert(2, [KeyboardButton(text=BTN_SERVERS), KeyboardButton(text=BTN_KEY)])
     if is_admin:
         keyboard.append([KeyboardButton(text=BTN_ADMIN)])
 
