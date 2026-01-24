@@ -185,6 +185,41 @@ async def _check_server_status(server: Server) -> dict:
     import socket
     import time
     
+    # Если сервер использует 3x-UI API, проверяем доступность API вместо порта
+    if server.x3ui_api_url and server.x3ui_username and server.x3ui_password:
+        try:
+            from core.x3ui_api import X3UIAPI
+            start_time = time.time()
+            
+            # Создаем временный клиент для проверки
+            x3ui = X3UIAPI(
+                api_url=server.x3ui_api_url,
+                username=server.x3ui_username,
+                password=server.x3ui_password,
+            )
+            
+            try:
+                # Пытаемся получить список Inbounds (быстрая проверка доступности API)
+                inbounds = await x3ui.list_inbounds()
+                response_time_ms = int((time.time() - start_time) * 1000)
+                is_online = inbounds is not None
+                
+                logger.debug(f"Проверка 3x-UI API для сервера {server.name}: online={is_online}, time={response_time_ms}ms")
+                
+                return {
+                    "is_online": is_online,
+                    "response_time_ms": response_time_ms,
+                    "connection_speed_mbps": None,
+                    "error_message": None if is_online else "3x-UI API недоступен",
+                }
+            finally:
+                await x3ui.close()
+        except Exception as e:
+            logger.warning(f"Ошибка при проверке 3x-UI API для сервера {server.name}: {e}")
+            # Fallback на обычную проверку порта
+            pass
+    
+    # Обычная проверка порта VPN-сервера
     port = server.xray_port or 443
     host = server.host
     

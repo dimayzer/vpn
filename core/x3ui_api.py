@@ -30,6 +30,11 @@ class X3UIAPI:
             username: Имя пользователя для авторизации
             password: Пароль для авторизации
         """
+        # Автоматически заменяем https на http для localhost (SSH-туннель)
+        if api_url.startswith("https://127.0.0.1") or api_url.startswith("https://localhost"):
+            api_url = api_url.replace("https://", "http://", 1)
+            logger.info(f"Автоматически заменен https на http для localhost: {api_url}")
+        
         self.api_url = api_url.rstrip("/")
         self.username = username
         self.password = password
