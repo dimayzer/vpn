@@ -314,6 +314,33 @@
                     <div class="label">Пригласил сам (рефералы)</div>
                     <div class="value">{{ referrals_count }}</div>
                 </div>
+                <!-- VPN Бан статус -->
+                <div class="card clickable" data-modal-target="modal-vpn-ban" style="{% if ban_info %}background: #fff5f5; border-color: #ffcccc;{% endif %}">
+                    <div class="label">VPN статус</div>
+                    <div class="value">
+                        {% if ban_info %}
+                        <span style="color: #dc3545;">⛔ Забанен</span>
+                        <div style="font-size: 0.85em; color: #666; margin-top: 4px;">
+                            Причина: {{ ban_info.reason }}<br>
+                            {% if ban_info.details %}Детали: {{ ban_info.details|truncate(50) }}<br>{% endif %}
+                            До: {{ ban_info.banned_until }}<br>
+                            {% if ban_info.auto_ban %}(Автобан){% endif %}
+                        </div>
+                        <div class="muted" style="margin-top:4px;">Нажми, чтобы разбанить</div>
+                        {% else %}
+                        <span style="color: #28a745;">✅ Активен</span>
+                        <div class="muted" style="margin-top:4px;">Нажми, чтобы забанить</div>
+                        {% endif %}
+                    </div>
+                </div>
+                <!-- IP История -->
+                <div class="card clickable" data-modal-target="modal-ip-history">
+                    <div class="label">IP адреса</div>
+                    <div class="value-inline">
+                        <span>{{ ip_history|length if ip_history else 0 }} записей</span>
+                        <div class="muted" style="margin-top:4px;">Нажми, чтобы открыть</div>
+                    </div>
+                </div>
                 <div class="card">
                     <div class="label">Тикеты</div>
                     <div class="value-inline clickable" data-modal-target="modal-tickets">
@@ -462,6 +489,73 @@
                 </div>
             </form>
             {% endif %}
+        </div>
+    </div>
+
+    <!-- VPN Бан модальное окно -->
+    <div class="overlay" id="modal-vpn-ban">
+        <div class="modal">
+            <h3>{% if ban_info %}Разбанить VPN{% else %}Забанить VPN{% endif %}</h3>
+            {% if ban_info %}
+            <form method="post" action="/admin/web/users/vpn-unban" class="modal-form">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <input type="hidden" name="tg_id" value="{{ user.tg_id }}">
+                <p style="margin-bottom: 14px;">Текущий бан: {{ ban_info.reason }}<br>До: {{ ban_info.banned_until }}</p>
+                <div class="actions">
+                    <button class="btn btn-muted" type="button" onclick="closeModal('modal-vpn-ban')">Отмена</button>
+                    <button class="btn btn-success" type="submit">Разбанить</button>
+                </div>
+            </form>
+            {% else %}
+            <form method="post" action="/admin/web/users/vpn-ban" class="modal-form">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <input type="hidden" name="tg_id" value="{{ user.tg_id }}">
+                <label class="label" style="display:block; margin-bottom:6px;">Причина бана</label>
+                <input class="input" type="text" name="reason" placeholder="Причина (обяз.)" required style="width:100%; margin-bottom:14px;">
+                <label class="label" style="display:block; margin-bottom:6px;">Срок бана (часов, 0 = перманентный)</label>
+                <input class="input" type="number" name="duration_hours" value="24" min="0" style="width:100%; margin-bottom:14px;">
+                <div class="actions">
+                    <button class="btn btn-muted" type="button" onclick="closeModal('modal-vpn-ban')">Отмена</button>
+                    <button class="btn btn-danger" type="submit">Забанить VPN</button>
+                </div>
+            </form>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- IP История модальное окно -->
+    <div class="overlay" id="modal-ip-history">
+        <div class="modal" style="width: min(700px, 95vw); max-height: 90vh; overflow-y: auto;">
+            <h3>История IP адресов</h3>
+            {% if ip_history %}
+            <table style="margin-top: 12px;">
+                <thead>
+                    <tr>
+                        <th>IP адрес</th>
+                        <th>Сервер</th>
+                        <th>Первое подключение</th>
+                        <th>Последнее</th>
+                        <th>Кол-во</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for ip in ip_history %}
+                    <tr>
+                        <td><code>{{ ip.ip }}</code></td>
+                        <td>{{ ip.server }}</td>
+                        <td>{{ ip.first_seen }}</td>
+                        <td>{{ ip.last_seen }}</td>
+                        <td>{{ ip.count }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <p class="muted">Нет данных об IP адресах</p>
+            {% endif %}
+            <div class="actions" style="margin-top: 16px;">
+                <button class="btn btn-muted" type="button" onclick="closeModal('modal-ip-history')">Закрыть</button>
+            </div>
         </div>
     </div>
 

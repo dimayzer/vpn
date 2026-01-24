@@ -338,3 +338,39 @@ class SystemSetting(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
     updated_by_tg_id: Mapped[int | None] = mapped_column(BigInteger)
 
+
+class IpLog(Base):
+    """Лог IP адресов клиентов VPN"""
+    __tablename__ = "ip_logs"
+    
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    server_id: Mapped[int] = mapped_column(ForeignKey("servers.id", ondelete="CASCADE"), nullable=False, index=True)
+    ip_address: Mapped[str] = mapped_column(String(45), nullable=False, index=True)  # IPv4 или IPv6
+    country: Mapped[str | None] = mapped_column(String(2))  # ISO код страны
+    city: Mapped[str | None] = mapped_column(String(128))
+    first_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
+    last_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, nullable=False, index=True)
+    connection_count: Mapped[int] = mapped_column(Integer, default=1, nullable=False)  # Количество подключений с этого IP
+    
+    user: Mapped["User"] = relationship("User")
+    server: Mapped["Server"] = relationship("Server")
+
+
+class UserBan(Base):
+    """Баны пользователей за нарушения"""
+    __tablename__ = "user_bans"
+    
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    reason: Mapped[str] = mapped_column(String(255), nullable=False)  # ip_limit_exceeded, suspicious_activity, manual
+    details: Mapped[str | None] = mapped_column(Text)  # Подробности (список IP, и т.д.)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False, index=True)
+    banned_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
+    banned_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))  # None = перманентный бан
+    unbanned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    unbanned_by_tg_id: Mapped[int | None] = mapped_column(BigInteger)
+    auto_ban: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)  # Автоматический бан или ручной
+    
+    user: Mapped["User"] = relationship("User")
+

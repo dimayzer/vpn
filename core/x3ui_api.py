@@ -425,3 +425,113 @@ class X3UIAPI:
         except Exception as e:
             logger.error(f"Ошибка при получении трафика клиента: {e}")
             return None
+    
+    async def get_client_ips(self, email: str) -> list[str]:
+        """
+        Получить список IP адресов клиента (онлайн подключения)
+        
+        Args:
+            email: Email клиента
+        
+        Returns:
+            Список IP адресов
+        """
+        await self._ensure_session()
+        
+        endpoint = f"{self.api_url}/inbounds/clientIps/{email}"
+        
+        try:
+            response = await self._session.post(endpoint)
+            
+            if response.status_code == 200:
+                result = response.json()
+                if result.get("success"):
+                    obj = result.get("obj")
+                    # obj может быть строкой с IP через запятую или списком
+                    if isinstance(obj, str):
+                        if obj and obj != "No IP Record":
+                            return [ip.strip() for ip in obj.split(",") if ip.strip()]
+                        return []
+                    elif isinstance(obj, list):
+                        return obj
+            
+            return []
+        except Exception as e:
+            logger.error(f"Ошибка при получении IP клиента: {e}")
+            return []
+    
+    async def clear_client_ips(self, email: str) -> bool:
+        """
+        Очистить историю IP адресов клиента
+        
+        Args:
+            email: Email клиента
+        
+        Returns:
+            True если успешно
+        """
+        await self._ensure_session()
+        
+        endpoint = f"{self.api_url}/inbounds/clearClientIps/{email}"
+        
+        try:
+            response = await self._session.post(endpoint)
+            
+            if response.status_code == 200:
+                result = response.json()
+                return result.get("success", False)
+            
+            return False
+        except Exception as e:
+            logger.error(f"Ошибка при очистке IP клиента: {e}")
+            return False
+    
+    async def get_online_clients(self) -> list[dict[str, Any]]:
+        """
+        Получить список онлайн клиентов
+        
+        Returns:
+            Список онлайн клиентов с их данными
+        """
+        await self._ensure_session()
+        
+        endpoint = f"{self.api_url}/inbounds/onlines"
+        
+        try:
+            response = await self._session.post(endpoint)
+            
+            if response.status_code == 200:
+                result = response.json()
+                if result.get("success"):
+                    return result.get("obj", []) or []
+            
+            return []
+        except Exception as e:
+            logger.error(f"Ошибка при получении онлайн клиентов: {e}")
+            return []
+    
+    async def disable_client(self, inbound_id: int, client_uuid: str) -> bool:
+        """
+        Отключить клиента (заблокировать)
+        
+        Args:
+            inbound_id: ID Inbound
+            client_uuid: UUID клиента
+        
+        Returns:
+            True если успешно
+        """
+        return await self.update_client(inbound_id, client_uuid, enable=False)
+    
+    async def enable_client(self, inbound_id: int, client_uuid: str) -> bool:
+        """
+        Включить клиента (разблокировать)
+        
+        Args:
+            inbound_id: ID Inbound
+            client_uuid: UUID клиента
+        
+        Returns:
+            True если успешно
+        """
+        return await self.update_client(inbound_id, client_uuid, enable=True)

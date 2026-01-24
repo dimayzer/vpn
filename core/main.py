@@ -64,6 +64,8 @@ from core.db.models import (
     ServerStatus,
     Backup,
     VpnCredential,
+    IpLog,
+    UserBan,
 )
 from core.xray import generate_vless_config, generate_uuid
 from core.schemas import (
@@ -674,6 +676,53 @@ async def lifespan(app: FastAPI):
             import logging
             logging.warning(f"Could not add connection_speed_mbps column (may already exist): {e}")
         
+        # Создаем таблицу ip_logs для мониторинга IP адресов
+        try:
+            await conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS ip_logs (
+                    id SERIAL PRIMARY KEY,
+                    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    server_id INTEGER NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
+                    ip_address VARCHAR(45) NOT NULL,
+                    country VARCHAR(2),
+                    city VARCHAR(128),
+                    first_seen TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+                    last_seen TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+                    connection_count INTEGER NOT NULL DEFAULT 1
+                )
+            """))
+            await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_ip_logs_user_id ON ip_logs(user_id)"))
+            await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_ip_logs_server_id ON ip_logs(server_id)"))
+            await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_ip_logs_ip_address ON ip_logs(ip_address)"))
+            await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_ip_logs_last_seen ON ip_logs(last_seen)"))
+            logger.info("Created ip_logs table")
+        except Exception as e:
+            if "already exists" not in str(e).lower():
+                logger.warning(f"Could not create ip_logs table (might already exist): {e}")
+        
+        # Создаем таблицу user_bans для хранения банов
+        try:
+            await conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS user_bans (
+                    id SERIAL PRIMARY KEY,
+                    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    reason VARCHAR(255) NOT NULL,
+                    details TEXT,
+                    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+                    banned_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+                    banned_until TIMESTAMP WITH TIME ZONE,
+                    unbanned_at TIMESTAMP WITH TIME ZONE,
+                    unbanned_by_tg_id BIGINT,
+                    auto_ban BOOLEAN NOT NULL DEFAULT FALSE
+                )
+            """))
+            await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_user_bans_user_id ON user_bans(user_id)"))
+            await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_user_bans_is_active ON user_bans(is_active)"))
+            logger.info("Created user_bans table")
+        except Exception as e:
+            if "already exists" not in str(e).lower():
+                logger.warning(f"Could not create user_bans table (might already exist): {e}")
+        
         # Проверяем и добавляем payment_status_changed
         try:
             result = await conn.execute(
@@ -891,6 +940,247 @@ async def lifespan(app: FastAPI):
     
     server_check_task = asyncio.create_task(check_servers_status())
     
+    # Фоновая задача для мониторинга IP и автобана
+    async def monitor_client_ips():
+        """Мониторит IP адреса клиентов и банит при превышении лимита"""
+        from core.db.session import SessionLocal
+        from core.db.models import Server, VpnCredential, User, IpLog, UserBan, SystemSetting
+        from core.x3ui_api import X3UIAPI
+        import logging
+        
+        # Ждем 2 минуты перед первым запуском
+        await asyncio.sleep(120)
+        
+        while True:
+            try:
+                async with SessionLocal() as session:
+                    try:
+                        # Получаем настройки
+                        ip_limit_setting = await session.scalar(
+                            select(SystemSetting).where(SystemSetting.key == "vpn_limit_ip")
+                        )
+                        autoban_enabled_setting = await session.scalar(
+                            select(SystemSetting).where(SystemSetting.key == "autoban_enabled")
+                        )
+                        
+                        ip_limit = 1
+                        if ip_limit_setting:
+                            try:
+                                ip_limit = int(ip_limit_setting.value)
+                            except (ValueError, TypeError):
+                                ip_limit = 1
+                        
+                        autoban_enabled = True
+                        if autoban_enabled_setting:
+                            autoban_enabled = autoban_enabled_setting.value.lower() in ("true", "1", "yes")
+                        
+                        # Получаем все активные серверы с 3x-UI API
+                        servers = await session.scalars(
+                            select(Server).where(
+                                Server.is_enabled == True,
+                                Server.x3ui_api_url.isnot(None),
+                                Server.x3ui_username.isnot(None),
+                                Server.x3ui_password.isnot(None)
+                            )
+                        )
+                        
+                        for server in servers.all():
+                            try:
+                                x3ui = X3UIAPI(
+                                    api_url=server.x3ui_api_url,
+                                    username=server.x3ui_username,
+                                    password=server.x3ui_password,
+                                )
+                                
+                                try:
+                                    # Получаем все активные credentials для этого сервера
+                                    credentials = await session.scalars(
+                                        select(VpnCredential)
+                                        .where(VpnCredential.server_id == server.id)
+                                        .where(VpnCredential.active == True)
+                                        .options(selectinload(VpnCredential.user))
+                                    )
+                                    
+                                    for cred in credentials.all():
+                                        if not cred.user:
+                                            continue
+                                        
+                                        # Формируем email клиента
+                                        client_email = f"user_{cred.user_id}_server_{server.id}@fiorevpn"
+                                        
+                                        # Получаем IP адреса клиента
+                                        ips = await x3ui.get_client_ips(client_email)
+                                        
+                                        if not ips:
+                                            continue
+                                        
+                                        now = datetime.utcnow()
+                                        
+                                        # Логируем IP адреса
+                                        for ip in ips:
+                                            if not ip or ip == "No IP Record":
+                                                continue
+                                            
+                                            # Ищем существующую запись
+                                            existing_log = await session.scalar(
+                                                select(IpLog).where(
+                                                    IpLog.user_id == cred.user_id,
+                                                    IpLog.server_id == server.id,
+                                                    IpLog.ip_address == ip
+                                                )
+                                            )
+                                            
+                                            if existing_log:
+                                                existing_log.last_seen = now
+                                                existing_log.connection_count += 1
+                                            else:
+                                                session.add(IpLog(
+                                                    user_id=cred.user_id,
+                                                    server_id=server.id,
+                                                    ip_address=ip,
+                                                    first_seen=now,
+                                                    last_seen=now,
+                                                    connection_count=1
+                                                ))
+                                        
+                                        # Проверяем превышение лимита IP
+                                        if autoban_enabled and len(ips) > ip_limit:
+                                            # Проверяем, не забанен ли уже
+                                            existing_ban = await session.scalar(
+                                                select(UserBan).where(
+                                                    UserBan.user_id == cred.user_id,
+                                                    UserBan.is_active == True
+                                                )
+                                            )
+                                            
+                                            if not existing_ban:
+                                                # Создаем бан
+                                                ban = UserBan(
+                                                    user_id=cred.user_id,
+                                                    reason="ip_limit_exceeded",
+                                                    details=f"Обнаружено {len(ips)} IP адресов (лимит: {ip_limit}). IP: {', '.join(ips)}",
+                                                    is_active=True,
+                                                    auto_ban=True,
+                                                    banned_until=now + timedelta(hours=24)  # Бан на 24 часа
+                                                )
+                                                session.add(ban)
+                                                
+                                                # Отключаем клиента в 3x-UI
+                                                if cred.user_uuid and server.x3ui_inbound_id:
+                                                    await x3ui.disable_client(server.x3ui_inbound_id, cred.user_uuid)
+                                                
+                                                # Уведомляем пользователя
+                                                notification_text = (
+                                                    "⚠️ <b>Ваш аккаунт временно заблокирован</b>\n\n"
+                                                    f"Причина: превышен лимит одновременных подключений ({len(ips)} из {ip_limit})\n"
+                                                    f"Блокировка снимется автоматически через 24 часа.\n\n"
+                                                    "Если вы считаете это ошибкой, обратитесь в поддержку."
+                                                )
+                                                asyncio.create_task(_send_user_notification(cred.user.tg_id, notification_text))
+                                                
+                                                logging.warning(
+                                                    f"Автобан пользователя {cred.user.tg_id}: "
+                                                    f"превышен лимит IP ({len(ips)} > {ip_limit})"
+                                                )
+                                        
+                                        await session.commit()
+                                        
+                                finally:
+                                    await x3ui.close()
+                                    
+                            except Exception as e:
+                                logging.error(f"Error monitoring IPs for server {server.name}: {e}")
+                                continue
+                                
+                    except Exception as e:
+                        logging.error(f"Error in IP monitoring task: {e}", exc_info=True)
+                        await session.rollback()
+                        
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logging.error(f"Error in IP monitoring task: {e}", exc_info=True)
+            
+            # Проверяем каждые 5 минут
+            await asyncio.sleep(300)
+    
+    ip_monitor_task = asyncio.create_task(monitor_client_ips())
+    
+    # Фоновая задача для снятия истекших банов
+    async def unban_expired_users():
+        """Снимает баны с истекшим сроком"""
+        from core.db.session import SessionLocal
+        from core.db.models import UserBan, VpnCredential, Server
+        from core.x3ui_api import X3UIAPI
+        import logging
+        
+        # Ждем 3 минуты перед первым запуском
+        await asyncio.sleep(180)
+        
+        while True:
+            try:
+                async with SessionLocal() as session:
+                    try:
+                        now = datetime.utcnow()
+                        
+                        # Находим истекшие баны
+                        expired_bans = await session.scalars(
+                            select(UserBan).where(
+                                UserBan.is_active == True,
+                                UserBan.banned_until.isnot(None),
+                                UserBan.banned_until < now
+                            )
+                        )
+                        
+                        for ban in expired_bans.all():
+                            ban.is_active = False
+                            ban.unbanned_at = now
+                            
+                            # Включаем клиента обратно в 3x-UI
+                            credentials = await session.scalars(
+                                select(VpnCredential)
+                                .where(VpnCredential.user_id == ban.user_id)
+                                .where(VpnCredential.active == True)
+                                .options(selectinload(VpnCredential.server))
+                            )
+                            
+                            for cred in credentials.all():
+                                if not cred.server or not cred.user_uuid:
+                                    continue
+                                    
+                                server = cred.server
+                                if server.x3ui_api_url and server.x3ui_username and server.x3ui_password and server.x3ui_inbound_id:
+                                    try:
+                                        x3ui = X3UIAPI(
+                                            api_url=server.x3ui_api_url,
+                                            username=server.x3ui_username,
+                                            password=server.x3ui_password,
+                                        )
+                                        try:
+                                            await x3ui.enable_client(server.x3ui_inbound_id, cred.user_uuid)
+                                        finally:
+                                            await x3ui.close()
+                                    except Exception as e:
+                                        logging.error(f"Error enabling client after unban: {e}")
+                            
+                            logging.info(f"Автоматически снят бан с пользователя {ban.user_id}")
+                        
+                        await session.commit()
+                        
+                    except Exception as e:
+                        logging.error(f"Error in unban task: {e}", exc_info=True)
+                        await session.rollback()
+                        
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logging.error(f"Error in unban task: {e}", exc_info=True)
+            
+            # Проверяем каждые 10 минут
+            await asyncio.sleep(600)
+    
+    unban_task = asyncio.create_task(unban_expired_users())
+    
     yield
     
     monitor_task.cancel()
@@ -898,12 +1188,16 @@ async def lifespan(app: FastAPI):
     payments_cleanup_task.cancel()
     subscription_check_task.cancel()
     server_check_task.cancel()
+    ip_monitor_task.cancel()
+    unban_task.cancel()
     try:
         await monitor_task
         await backup_task
         await payments_cleanup_task
         await subscription_check_task
         await server_check_task
+        await ip_monitor_task
+        await unban_task
     except asyncio.CancelledError:
         pass
 
@@ -4719,6 +5013,43 @@ async def admin_web_user_detail(
     }
 
     photo_url = await _fetch_avatar_url(tg_id, os.getenv("BOT_TOKEN", ""))
+    
+    # Получаем информацию о банах
+    active_ban = await session.scalar(
+        select(UserBan)
+        .where(UserBan.user_id == user.id)
+        .where(UserBan.is_active == True)
+        .order_by(UserBan.banned_at.desc())
+    )
+    
+    ban_info = None
+    if active_ban:
+        ban_info = {
+            "id": active_ban.id,
+            "reason": active_ban.reason,
+            "details": active_ban.details,
+            "banned_at": fmt(active_ban.banned_at),
+            "banned_until": fmt(active_ban.banned_until) if active_ban.banned_until else "Перманентно",
+            "auto_ban": active_ban.auto_ban,
+        }
+    
+    # Получаем историю IP адресов
+    ip_logs = await session.scalars(
+        select(IpLog)
+        .where(IpLog.user_id == user.id)
+        .order_by(IpLog.last_seen.desc())
+        .limit(20)
+    )
+    ip_history = []
+    for ip_log in ip_logs.all():
+        server = await session.get(Server, ip_log.server_id)
+        ip_history.append({
+            "ip": ip_log.ip_address,
+            "server": server.name if server else "—",
+            "first_seen": fmt(ip_log.first_seen),
+            "last_seen": fmt(ip_log.last_seen),
+            "count": ip_log.connection_count,
+        })
 
     return templates.TemplateResponse("user_detail.html", {
         "request": request,
@@ -4736,6 +5067,8 @@ async def admin_web_user_detail(
         "role_value": ("superadmin" if user.tg_id in admin_ids else (override_role if override_role else "user")),
         "role_options": ["admin", "moderator", "user"],
         "avatar_url": photo_url,
+        "ban_info": ban_info,
+        "ip_history": ip_history,
     })
 
 
@@ -5101,6 +5434,180 @@ async def admin_web_unblock_user(
     notification_text = (
         f"✅ <b>Аккаунт разблокирован</b>\n\n"
         f"Ваш аккаунт был разблокирован администратором."
+    )
+    asyncio.create_task(_send_user_notification(tg_id, notification_text))
+    
+    back = request.headers.get("referer") or f"/admin/web/users/{tg_id}"
+    return RedirectResponse(url=back, status_code=303)
+
+
+@app.post("/admin/web/users/vpn-ban")
+async def admin_web_vpn_ban_user(
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    admin_user: dict = Depends(_require_web_admin),
+):
+    """Забанить пользователя в VPN (отключить клиента в 3x-UI)"""
+    _require_csrf(request)
+    form = await request.form()
+    tg_id = int(str(form.get("tg_id", "0")))
+    reason = str(form.get("reason", "")).strip()
+    duration_hours = int(str(form.get("duration_hours", "24")))
+    
+    if not reason:
+        back = request.headers.get("referer") or f"/admin/web/users/{tg_id}"
+        return RedirectResponse(url=f"{back}?error=reason_required", status_code=303)
+    
+    user = await session.scalar(select(User).where(User.tg_id == tg_id))
+    if not user:
+        return RedirectResponse(url="/admin/web/users?error=user_not_found", status_code=303)
+    
+    # Проверяем, нет ли уже активного бана
+    existing_ban = await session.scalar(
+        select(UserBan).where(UserBan.user_id == user.id, UserBan.is_active == True)
+    )
+    
+    if existing_ban:
+        back = request.headers.get("referer") or f"/admin/web/users/{tg_id}"
+        return RedirectResponse(url=f"{back}?error=already_banned", status_code=303)
+    
+    now = datetime.utcnow()
+    banned_until = now + timedelta(hours=duration_hours) if duration_hours > 0 else None
+    
+    # Создаем бан
+    ban = UserBan(
+        user_id=user.id,
+        reason="manual",
+        details=reason,
+        is_active=True,
+        auto_ban=False,
+        banned_until=banned_until,
+    )
+    session.add(ban)
+    
+    # Отключаем клиента в 3x-UI
+    credentials = await session.scalars(
+        select(VpnCredential)
+        .where(VpnCredential.user_id == user.id)
+        .where(VpnCredential.active == True)
+        .options(selectinload(VpnCredential.server))
+    )
+    
+    for cred in credentials.all():
+        if not cred.server or not cred.user_uuid:
+            continue
+        
+        server = cred.server
+        if server.x3ui_api_url and server.x3ui_username and server.x3ui_password and server.x3ui_inbound_id:
+            try:
+                from core.x3ui_api import X3UIAPI
+                x3ui = X3UIAPI(
+                    api_url=server.x3ui_api_url,
+                    username=server.x3ui_username,
+                    password=server.x3ui_password,
+                )
+                try:
+                    await x3ui.disable_client(server.x3ui_inbound_id, cred.user_uuid)
+                finally:
+                    await x3ui.close()
+            except Exception as e:
+                logger.error(f"Error disabling client for ban: {e}")
+    
+    session.add(
+        AuditLog(
+            action=AuditLogAction.admin_action,
+            user_tg_id=tg_id,
+            admin_tg_id=admin_user.get("tg_id"),
+            details=f"VPN бан пользователя. Причина: {reason}. Срок: {duration_hours}ч" if duration_hours > 0 else f"VPN бан пользователя (перманентный). Причина: {reason}",
+        )
+    )
+    await session.commit()
+    
+    # Уведомляем пользователя
+    duration_text = f"на {duration_hours} часов" if duration_hours > 0 else "на неопределенный срок"
+    notification_text = (
+        f"⛔ <b>Ваш VPN доступ заблокирован</b>\n\n"
+        f"Причина: {reason}\n"
+        f"Срок: {duration_text}\n\n"
+        "Если вы считаете это ошибкой, обратитесь в поддержку."
+    )
+    asyncio.create_task(_send_user_notification(tg_id, notification_text))
+    
+    back = request.headers.get("referer") or f"/admin/web/users/{tg_id}"
+    return RedirectResponse(url=back, status_code=303)
+
+
+@app.post("/admin/web/users/vpn-unban")
+async def admin_web_vpn_unban_user(
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    admin_user: dict = Depends(_require_web_admin),
+):
+    """Разбанить пользователя в VPN"""
+    _require_csrf(request)
+    form = await request.form()
+    tg_id = int(str(form.get("tg_id", "0")))
+    
+    user = await session.scalar(select(User).where(User.tg_id == tg_id))
+    if not user:
+        return RedirectResponse(url="/admin/web/users?error=user_not_found", status_code=303)
+    
+    # Находим активный бан
+    active_ban = await session.scalar(
+        select(UserBan).where(UserBan.user_id == user.id, UserBan.is_active == True)
+    )
+    
+    if not active_ban:
+        back = request.headers.get("referer") or f"/admin/web/users/{tg_id}"
+        return RedirectResponse(url=f"{back}?error=not_banned", status_code=303)
+    
+    # Снимаем бан
+    active_ban.is_active = False
+    active_ban.unbanned_at = datetime.utcnow()
+    active_ban.unbanned_by_tg_id = admin_user.get("tg_id")
+    
+    # Включаем клиента обратно в 3x-UI
+    credentials = await session.scalars(
+        select(VpnCredential)
+        .where(VpnCredential.user_id == user.id)
+        .where(VpnCredential.active == True)
+        .options(selectinload(VpnCredential.server))
+    )
+    
+    for cred in credentials.all():
+        if not cred.server or not cred.user_uuid:
+            continue
+        
+        server = cred.server
+        if server.x3ui_api_url and server.x3ui_username and server.x3ui_password and server.x3ui_inbound_id:
+            try:
+                from core.x3ui_api import X3UIAPI
+                x3ui = X3UIAPI(
+                    api_url=server.x3ui_api_url,
+                    username=server.x3ui_username,
+                    password=server.x3ui_password,
+                )
+                try:
+                    await x3ui.enable_client(server.x3ui_inbound_id, cred.user_uuid)
+                finally:
+                    await x3ui.close()
+            except Exception as e:
+                logger.error(f"Error enabling client for unban: {e}")
+    
+    session.add(
+        AuditLog(
+            action=AuditLogAction.admin_action,
+            user_tg_id=tg_id,
+            admin_tg_id=admin_user.get("tg_id"),
+            details=f"VPN разбан пользователя",
+        )
+    )
+    await session.commit()
+    
+    # Уведомляем пользователя
+    notification_text = (
+        f"✅ <b>Ваш VPN доступ восстановлен</b>\n\n"
+        "Вы снова можете пользоваться VPN."
     )
     asyncio.create_task(_send_user_notification(tg_id, notification_text))
     
@@ -7027,6 +7534,14 @@ async def _generate_vpn_config_for_user_server(user_id: int, server_id: int, ses
             # Генерируем уникальный email для клиента
             client_email = f"user_{user_id}_server_{server.id}@fiorevpn"
             
+            # ВАЖНО: Удаляем существующего клиента перед созданием нового (для regenerate и duplicate email)
+            try:
+                deleted = await x3ui.delete_client(inbound_id, client_email)
+                if deleted:
+                    logger.info(f"Удален существующий клиент {client_email} из Inbound {inbound_id}")
+            except Exception as del_err:
+                logger.warning(f"Не удалось удалить клиента {client_email}: {del_err}")
+            
             # Получаем настройки лимитов из SystemSetting
             limit_ip_setting = await session.scalar(select(SystemSetting).where(SystemSetting.key == "vpn_limit_ip"))
             
@@ -7037,7 +7552,7 @@ async def _generate_vpn_config_for_user_server(user_id: int, server_id: int, ses
                 except (ValueError, TypeError):
                     limit_ip = 1
             
-            # Создаем клиента в 3x-UI (упрощенный вариант)
+            # Создаем клиента в 3x-UI
             expire_timestamp = int(expires_at.timestamp() * 1000) if expires_at else 0  # 3x-UI использует миллисекунды
             logger.info(
                 f"Создание клиента через 3x-UI API для пользователя {user_id} на сервере {server.name} (ID: {server.id}): "
@@ -7635,6 +8150,42 @@ async def select_server_for_user(
     if not server:
         raise HTTPException(status_code=404, detail="server_not_found")
     
+    old_server_id = user.selected_server_id
+    
+    # Если меняем сервер — удаляем клиента со старого сервера
+    if old_server_id and old_server_id != server_id:
+        old_server = await session.get(Server, old_server_id)
+        if old_server and old_server.x3ui_api_url and old_server.x3ui_username and old_server.x3ui_password:
+            try:
+                from core.x3ui_api import X3UIAPI
+                x3ui = X3UIAPI(
+                    api_url=old_server.x3ui_api_url,
+                    username=old_server.x3ui_username,
+                    password=old_server.x3ui_password,
+                )
+                try:
+                    client_email = f"user_{user.id}_server_{old_server.id}@fiorevpn"
+                    inbound_id = old_server.x3ui_inbound_id
+                    if inbound_id:
+                        deleted = await x3ui.delete_client(inbound_id, client_email)
+                        if deleted:
+                            logger.info(f"Удален клиент {client_email} со старого сервера {old_server.name}")
+                finally:
+                    await x3ui.close()
+            except Exception as e:
+                logger.warning(f"Не удалось удалить клиента со старого сервера {old_server.name}: {e}")
+        
+        # Деактивируем старые VPN credentials для старого сервера
+        old_credentials = await session.scalars(
+            select(VpnCredential)
+            .where(VpnCredential.user_id == user.id)
+            .where(VpnCredential.server_id == old_server_id)
+            .where(VpnCredential.active == True)
+        )
+        for cred in old_credentials:
+            cred.active = False
+        logger.info(f"Деактивированы старые VPN credentials пользователя {user.tg_id} для сервера {old_server_id}")
+    
     # Устанавливаем выбранный сервер
     user.selected_server_id = server_id
     await session.commit()
@@ -7774,122 +8325,6 @@ async def generate_user_vpn_key(
     if not credential or not credential.config_text:
         import logging
         logging.error(f"Ключ не был создан для пользователя {user.tg_id}, хотя ошибок не было")
-        raise HTTPException(status_code=500, detail="key_generation_failed")
-    
-    return {"key": credential.config_text, "server_name": server.name}
-
-
-@app.post("/users/{tg_id}/select-server")
-async def select_server_for_user(
-    tg_id: int,
-    payload: dict,
-    session: AsyncSession = Depends(get_session),
-):
-    """Установить выбранный сервер для пользователя"""
-    user = await session.scalar(select(User).where(User.tg_id == tg_id))
-    if not user:
-        raise HTTPException(status_code=404, detail="user_not_found")
-    
-    server_id = payload.get("server_id")
-    if not server_id:
-        raise HTTPException(status_code=400, detail="server_id_required")
-    
-    # Проверяем, что сервер существует и активен
-    server = await session.scalar(
-        select(Server)
-        .where(Server.id == server_id)
-        .where(Server.is_enabled == True)
-    )
-    if not server:
-        raise HTTPException(status_code=404, detail="server_not_found")
-    
-    # Устанавливаем выбранный сервер
-    user.selected_server_id = server_id
-    await session.commit()
-    
-    return {"success": True, "server_id": server_id, "server_name": server.name}
-
-
-@app.get("/users/{tg_id}/vpn-key")
-async def get_user_vpn_key(
-    tg_id: int,
-    session: AsyncSession = Depends(get_session),
-):
-    """Получить VPN ключ пользователя"""
-    user = await session.scalar(select(User).where(User.tg_id == tg_id))
-    if not user:
-        raise HTTPException(status_code=404, detail="user_not_found")
-    
-    if not user.selected_server_id:
-        return {"key": None, "server_name": None}
-    
-    # Получаем активный ключ для выбранного сервера
-    credential = await session.scalar(
-        select(VpnCredential)
-        .where(VpnCredential.user_id == user.id)
-        .where(VpnCredential.server_id == user.selected_server_id)
-        .where(VpnCredential.active == True)
-        .order_by(VpnCredential.created_at.desc())
-    )
-    
-    server = await session.get(Server, user.selected_server_id)
-    server_name = server.name if server else None
-    
-    if credential and credential.config_text:
-        return {"key": credential.config_text, "server_name": server_name}
-    
-    return {"key": None, "server_name": server_name}
-
-
-@app.post("/users/{tg_id}/vpn-key/generate")
-async def generate_user_vpn_key(
-    tg_id: int,
-    session: AsyncSession = Depends(get_session),
-):
-    """Сгенерировать VPN ключ для пользователя"""
-    user = await session.scalar(select(User).where(User.tg_id == tg_id))
-    if not user:
-        raise HTTPException(status_code=404, detail="user_not_found")
-    
-    if not user.selected_server_id:
-        raise HTTPException(status_code=400, detail="server_not_selected")
-    
-    # Проверяем активную подписку
-    if not user.has_active_subscription or not user.subscription_ends_at:
-        raise HTTPException(status_code=403, detail="no_active_subscription")
-    
-    from datetime import datetime, timezone
-    if user.subscription_ends_at < datetime.now(timezone.utc):
-        raise HTTPException(status_code=403, detail="subscription_expired")
-    
-    # Получаем сервер
-    server = await session.get(Server, user.selected_server_id)
-    if not server or not server.is_enabled:
-        raise HTTPException(status_code=404, detail="server_not_found")
-    
-    # Деактивируем старые ключи для этого сервера
-    old_credentials = await session.scalars(
-        select(VpnCredential)
-        .where(VpnCredential.user_id == user.id)
-        .where(VpnCredential.server_id == user.selected_server_id)
-        .where(VpnCredential.active == True)
-    )
-    for old_cred in old_credentials.all():
-        old_cred.active = False
-    
-    # Генерируем новый ключ
-    await _generate_vpn_config_for_user_server(user.id, user.selected_server_id, session, user.subscription_ends_at)
-    
-    # Получаем созданный ключ
-    credential = await session.scalar(
-        select(VpnCredential)
-        .where(VpnCredential.user_id == user.id)
-        .where(VpnCredential.server_id == user.selected_server_id)
-        .where(VpnCredential.active == True)
-        .order_by(VpnCredential.created_at.desc())
-    )
-    
-    if not credential or not credential.config_text:
         raise HTTPException(status_code=500, detail="key_generation_failed")
     
     return {"key": credential.config_text, "server_name": server.name}
