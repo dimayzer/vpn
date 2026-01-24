@@ -7,6 +7,7 @@ from __future__ import annotations
 import uuid
 import json
 from typing import Optional
+from urllib.parse import quote
 
 
 def generate_uuid() -> str:
@@ -58,27 +59,38 @@ def generate_vless_config(
     # Формируем базовую часть ссылки
     # Формат: vless://UUID@HOST:PORT?параметры#REMARK
     
+    # Убираем порт из host если он там есть (на случай ошибки в данных)
+    clean_host = server_host.split(":")[0] if ":" in server_host else server_host
+    
     params = []
     
-    # Тип сети
-    if server_network != "tcp":
-        params.append(f"type={server_network}")
+    # Тип сети — ВСЕГДА указываем
+    params.append(f"type={server_network}")
+    
+    # Encryption — для VLESS всегда none
+    params.append("encryption=none")
     
     # Безопасность
     if server_security == "tls":
         params.append("security=tls")
         if server_sni:
-            params.append(f"sni={server_sni}")
+            # Берем только первый SNI если их несколько через запятую
+            clean_sni = server_sni.split(",")[0].strip()
+            params.append(f"sni={clean_sni}")
     elif server_security == "reality":
         params.append("security=reality")
-        params.append("fp=chrome")  # Fingerprint для Reality
-        params.append("spx=%2F")  # SpiderX для Reality
         if server_sni:
-            params.append(f"sni={server_sni}")
+            # Берем только первый SNI если их несколько через запятую
+            clean_sni = server_sni.split(",")[0].strip()
+            params.append(f"sni={clean_sni}")
         if server_reality_public_key:
             params.append(f"pbk={server_reality_public_key}")
         if server_reality_short_id:
-            params.append(f"sid={server_reality_short_id}")
+            # Берем только первый Short ID если их несколько
+            clean_sid = server_reality_short_id.split(",")[0].strip()
+            params.append(f"sid={clean_sid}")
+        params.append("fp=chrome")  # Fingerprint для Reality
+        params.append("spx=%2F")  # SpiderX для Reality
     
     # Flow (только для XTLS)
     if server_flow:
@@ -99,12 +111,14 @@ def generate_vless_config(
     # Собираем параметры
     query_string = "&".join(params) if params else ""
     
-    # Формируем ссылку
-    vless_url = f"vless://{user_uuid}@{server_host}:{server_port}"
+    # Формируем ссылку (используем очищенный host)
+    vless_url = f"vless://{user_uuid}@{clean_host}:{server_port}"
     if query_string:
         vless_url += f"?{query_string}"
     if remark:
-        vless_url += f"#{remark}"
+        # URL-кодируем remark (пробелы → %20, спецсимволы и т.д.)
+        encoded_remark = quote(remark, safe='')
+        vless_url += f"#{encoded_remark}"
     
     return vless_url
 
