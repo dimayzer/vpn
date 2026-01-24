@@ -168,137 +168,67 @@ class X3UIAPI:
         total_gb: int = 0,
     ) -> dict[str, Any] | None:
         """
-        Добавить клиента в Inbound
+        Добавить клиента в Inbound (упрощенный вариант по алгоритму ChatGPT)
         
         Args:
             inbound_id: ID Inbound в 3x-UI
             email: Email/ID клиента
             uuid: UUID клиента (если None, будет сгенерирован автоматически)
             flow: Flow control (xtls-rprx-vision и т.д.)
-            expire: Дата истечения (timestamp, 0 = без ограничений)
+            expire: Дата истечения (timestamp в миллисекундах, 0 = без ограничений)
             limit_ip: Лимит IP адресов (0 = без ограничений)
             total_gb: Лимит трафика в GB (0 = без ограничений)
         
         Returns:
-            Данные созданного клиента или None при ошибке
+            Данные созданного клиента с UUID или None при ошибке
         """
         try:
-            # Сначала получаем текущий Inbound
-            inbound = await self.get_inbound(inbound_id)
-            if not inbound:
-                logger.warning(f"Inbound {inbound_id} не найден в 3x-UI (возможно, был удален или изменен ID)")
-                return None
-            
-            # Парсим settings
-            settings = json.loads(inbound.get("settings", "{}"))
-            clients = settings.get("clients", [])
-            
             # Генерируем UUID если не указан
             if not uuid:
                 from core.xray import generate_uuid
                 uuid = generate_uuid()
             
-            # Создаем нового клиента
-            new_client = {
-                "email": email,
-                "id": uuid,
-                "flow": flow,
-                "expiryTime": expire,
-                "limitIp": limit_ip,
-                "totalGB": total_gb,
-                "enable": True,
-            }
-            
-            clients.append(new_client)
-            settings["clients"] = clients
-            
-            # Согласно документации 3x-UI API, используем endpoint для добавления клиента
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                # Попробуем разные варианты API endpoints согласно документации
-                endpoints = [
-                    f"{self.api_url}/inbounds/{inbound_id}/addClient",  # Стандартный endpoint для добавления клиента
-                    f"{self.api_url}/inbounds/addClient",  # Альтернативный вариант
-                ]
-                
-                # Формат запроса для добавления клиента
-                payload = {
-                    "id": inbound_id,
-                    "client": {
-                        "email": email,
+            # Простой payload как в примере ChatGPT
+            payload = {
+                "id": inbound_id,
+                "settings": json.dumps({
+                    "clients": [{
                         "id": uuid,
-                        "flow": flow,
+                        "email": email,
+                        "enable": True,
                         "expiryTime": expire,
                         "limitIp": limit_ip,
-                        "totalGB": total_gb,
-                        "enable": True,
-                    }
-                }
+                        "flow": flow
+                    }]
+                })
+            }
+            
+            # Простой вызов API endpoint
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                endpoint = f"{self.api_url}/inbounds/addClient"
+                response = await client.post(
+                    endpoint,
+                    json=payload,
+                    headers=self._get_auth_headers(),
+                )
                 
-                for endpoint in endpoints:
-                    try:
-                        response = await client.post(
-                            endpoint,
-                            json=payload,
-                            headers=self._get_auth_headers(),
-                        )
-                        if response.status_code == 200:
-                            result = response.json()
-                            if result.get("success"):
-                                # Возвращаем клиента с UUID
-                                return {
-                                    "id": uuid,
-                                    "uuid": uuid,
-                                    "email": email,
-                                    **new_client
-                                }
-                    except Exception as e:
-                        logger.debug(f"Ошибка при вызове {endpoint}: {e}")
-                        continue
-                
-                # Если не сработало через addClient, пробуем обновить весь Inbound
-                endpoints_update = [
-                    f"{self.api_url}/inbounds/update/{inbound_id}",
-                    f"{self.api_url}/inbound/update/{inbound_id}",
-                ]
-                
-                payload_update = {
-                    "id": inbound_id,
-                    "settings": json.dumps(settings),
-                    "streamSettings": inbound.get("streamSettings", ""),
-                    "sniffing": inbound.get("sniffing", ""),
-                    "remark": inbound.get("remark", ""),
-                    "enable": inbound.get("enable", True),
-                    "expiryTime": inbound.get("expiryTime", 0),
-                    "listen": inbound.get("listen", ""),
-                    "port": inbound.get("port"),
-                    "protocol": inbound.get("protocol", "vless"),
-                }
-                
-                for endpoint in endpoints_update:
-                    try:
-                        response = await client.post(
-                            endpoint,
-                            json=payload_update,
-                            headers=self._get_auth_headers(),
-                        )
-                        if response.status_code == 200:
-                            result = response.json()
-                            if result.get("success"):
-                                # Возвращаем клиента с UUID
-                                return {
-                                    "id": uuid,
-                                    "uuid": uuid,
-                                    "email": email,
-                                    **new_client
-                                }
-                    except Exception as e:
-                        logger.debug(f"Ошибка при вызове {endpoint}: {e}")
-                        continue
-                
-                logger.error(f"Не удалось добавить клиента в 3x-UI через API")
-                return None
+                if response.status_code == 200:
+                    result = response.json()
+                    if result.get("success"):
+                        logger.info(f"Клиент {email} успешно добавлен в Inbound {inbound_id} с UUID {uuid}")
+                        return {
+                            "id": uuid,
+                            "uuid": uuid,
+                            "email": email,
+                        }
+                    else:
+                        logger.warning(f"API вернул success=false: {result}")
+                        return None
+                else:
+                    logger.error(f"Ошибка при добавлении клиента: HTTP {response.status_code}, {response.text}")
+                    return None
         except Exception as e:
-            logger.error(f"Ошибка при добавлении клиента в 3x-UI: {e}")
+            logger.error(f"Ошибка при добавлении клиента в 3x-UI: {e}", exc_info=True)
             return None
     
     async def delete_client(self, inbound_id: int, email: str) -> bool:

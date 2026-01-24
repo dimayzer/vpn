@@ -6982,57 +6982,52 @@ async def _generate_vpn_config_for_user_server(user_id: int, server_id: int, ses
                 password=server.x3ui_password,
             )
             
-            # Определяем ID инбаунда
+            # Определяем ID инбаунда (простой подход - требуем указания ID)
             inbound_id = server.x3ui_inbound_id
             
-            # Если ID не указан или инбаунд не найден, пытаемся найти автоматически
-            if not inbound_id or not await x3ui.get_inbound(inbound_id):
-                # Пытаемся найти инбаунд по порту и протоколу
-                port = server.xray_port or 443
-                protocol = "vless"  # По умолчанию VLESS
-                found_inbound = await x3ui.find_inbound_by_port_and_protocol(port, protocol)
+            if not inbound_id:
+                # Если ID не указан, пробуем найти автоматически (fallback)
+                logger.warning(f"Inbound ID не указан для сервера {server.name}, пытаемся найти автоматически")
+                found_inbound = await x3ui.find_first_vless_inbound()
                 
                 if found_inbound:
                     inbound_id = found_inbound.get("id")
-                    logger.info(f"Автоматически найден Inbound ID {inbound_id} для сервера {server.name} (порт {port})")
+                    logger.info(f"Автоматически найден VLESS Inbound ID {inbound_id} для сервера {server.name}")
                     # Сохраняем найденный ID в базу данных
                     server.x3ui_inbound_id = inbound_id
                     await session.commit()
                 else:
-                    # Если не найден по порту, пробуем найти любой VLESS Inbound
-                    logger.warning(f"Не удалось найти Inbound для сервера {server.name} по порту {port}, ищем любой VLESS Inbound")
                     # Логируем все доступные Inbounds для отладки
                     all_inbounds = await x3ui.list_inbounds()
                     if all_inbounds:
-                        logger.info(f"Доступные Inbounds в 3x-UI: {[(inb.get('id'), inb.get('port'), inb.get('protocol'), inb.get('remark', '')) for inb in all_inbounds]}")
-                    found_inbound = await x3ui.find_first_vless_inbound()
-                    
-                    if found_inbound:
-                        inbound_id = found_inbound.get("id")
-                        inbound_port = found_inbound.get("port", "неизвестен")
-                        logger.info(f"Найден VLESS Inbound ID {inbound_id} (порт {inbound_port}) для сервера {server.name}")
-                        # Сохраняем найденный ID в базу данных
-                        server.x3ui_inbound_id = inbound_id
-                        # Обновляем порт сервера, если он отличается
-                        if inbound_port != "неизвестен" and server.xray_port != inbound_port:
-                            logger.info(f"Обновляем порт сервера {server.name} с {server.xray_port} на {inbound_port}")
-                            server.xray_port = inbound_port
-                        await session.commit()
+                        inbound_list = []
+                        for inb in all_inbounds:
+                            inbound_list.append({
+                                "id": inb.get("id"),
+                                "port": inb.get("port"),
+                                "protocol": inb.get("protocol"),
+                                "remark": inb.get("remark", ""),
+                                "enable": inb.get("enable", False)
+                            })
+                        logger.error(f"Доступные Inbounds в 3x-UI для сервера {server.name}: {inbound_list}")
+                        inbound_info = ", ".join([f"ID:{inb['id']} ({inb['protocol']}, порт:{inb['port']})" for inb in inbound_list])
+                        raise ValueError(
+                            f"Inbound ID не указан для сервера {server.name} и не найден VLESS Inbound автоматически. "
+                            f"Доступные Inbounds: {inbound_info}. "
+                            f"Укажите правильный Inbound ID в настройках сервера."
+                        )
                     else:
-                        logger.warning(f"Не удалось найти ни одного VLESS Inbound для сервера {server.name}")
-                        # Если не найден Inbound, но есть UUID, используем fallback
-                        if server.xray_uuid:
-                            logger.info(f"Используем fallback на UUID для сервера {server.name} (Inbound не найден)")
-                            raise ValueError("INBOUND_NOT_FOUND_FALLBACK_TO_UUID")
-                        else:
-                            raise ValueError(f"Inbound не найден для сервера {server.name}. Убедитесь, что в 3x-UI создан VLESS Inbound и указан правильный Inbound ID в настройках сервера.")
+                        logger.error(f"Не удалось получить список Inbounds из 3x-UI для сервера {server.name}")
+                        raise ValueError(
+                            f"Inbound ID не указан для сервера {server.name} и не удалось получить список Inbounds. "
+                            f"Проверьте настройки API 3x-UI (URL: {server.x3ui_api_url}, username: {server.x3ui_username})."
+                        )
             
             # Генерируем уникальный email для клиента
             client_email = f"user_{user_id}_server_{server.id}@fiorevpn"
             
             # Получаем настройки лимитов из SystemSetting
             limit_ip_setting = await session.scalar(select(SystemSetting).where(SystemSetting.key == "vpn_limit_ip"))
-            total_gb_setting = await session.scalar(select(SystemSetting).where(SystemSetting.key == "vpn_traffic_limit_gb"))
             
             limit_ip = 1  # По умолчанию 1 IP
             if limit_ip_setting:
@@ -7041,14 +7036,7 @@ async def _generate_vpn_config_for_user_server(user_id: int, server_id: int, ses
                 except (ValueError, TypeError):
                     limit_ip = 1
             
-            total_gb = 0  # По умолчанию без ограничений (0 = unlimited)
-            if total_gb_setting:
-                try:
-                    total_gb = int(total_gb_setting.value)
-                except (ValueError, TypeError):
-                    total_gb = 0
-            
-            # Создаем клиента в 3x-UI
+            # Создаем клиента в 3x-UI (упрощенный вариант)
             expire_timestamp = int(expires_at.timestamp() * 1000) if expires_at else 0  # 3x-UI использует миллисекунды
             client_data = await x3ui.add_client(
                 inbound_id=inbound_id,
@@ -7057,7 +7045,7 @@ async def _generate_vpn_config_for_user_server(user_id: int, server_id: int, ses
                 flow=server.xray_flow or "",
                 expire=expire_timestamp,
                 limit_ip=limit_ip,
-                total_gb=total_gb,
+                total_gb=0,  # Без ограничений трафика
             )
             
             if client_data:
@@ -7068,17 +7056,27 @@ async def _generate_vpn_config_for_user_server(user_id: int, server_id: int, ses
                     logger.warning(f"Не удалось получить UUID для клиента {client_email} из ответа API 3x-UI")
                     raise ValueError(f"Не удалось получить UUID для клиента на сервере {server.name}")
                 
-                # Получаем конфиг через API (параметры берутся из Inbound автоматически)
-                config_text = await x3ui.get_client_config(
-                    inbound_id=inbound_id,
-                    email=client_email,
+                # Генерируем конфиг напрямую из параметров сервера (как в примере ChatGPT)
+                from core.xray import generate_vless_config
+                config_text = generate_vless_config(
+                    user_uuid=user_uuid,
                     server_host=server.host,
-                    server_port=server.xray_port,  # Если None, берется из Inbound
+                    server_port=server.xray_port or 443,
+                    server_uuid=user_uuid,  # Используем UUID пользователя
+                    server_flow=server.xray_flow,
+                    server_network=server.xray_network or "tcp",
+                    server_security=server.xray_security or "tls",
+                    server_sni=server.xray_sni,
+                    server_reality_public_key=server.xray_reality_public_key,
+                    server_reality_short_id=server.xray_reality_short_id,
+                    server_path=server.xray_path,
+                    server_host_header=server.xray_host,
+                    remark=f"{server.name}",
                 )
                 
                 if not config_text:
-                    logger.warning(f"Не удалось получить конфиг для клиента {client_email} на сервере {server.name}")
-                    raise ValueError(f"Не удалось получить конфиг для клиента на сервере {server.name}")
+                    logger.warning(f"Не удалось сгенерировать конфиг для клиента {client_email} на сервере {server.name}")
+                    raise ValueError(f"Не удалось сгенерировать конфиг для клиента на сервере {server.name}")
             else:
                 # Клиент не был создан (инбаунд не найден или другая ошибка)
                 logger.warning(f"Не удалось создать клиента через API 3x-UI для сервера {server.name} (ID: {server.id}, Inbound ID: {server.x3ui_inbound_id})")
@@ -7264,6 +7262,51 @@ async def admin_api_servers(
         servers_list.append(server_dict)
     
     return {"servers": servers_list}
+
+
+@app.get("/admin/web/api/servers/{server_id}/inbounds")
+async def admin_api_get_server_inbounds(
+    server_id: int,
+    session: AsyncSession = Depends(get_session),
+    admin_user: dict = Depends(_require_web_admin),
+):
+    """API: Получить список Inbounds из 3x-UI для сервера"""
+    server = await session.get(Server, server_id)
+    if not server:
+        raise HTTPException(status_code=404, detail="server_not_found")
+    
+    if not server.x3ui_api_url or not server.x3ui_username or not server.x3ui_password:
+        raise HTTPException(status_code=400, detail="3x_ui_api_not_configured")
+    
+    try:
+        from core.x3ui_api import X3UIAPI
+        x3ui = X3UIAPI(
+            api_url=server.x3ui_api_url,
+            username=server.x3ui_username,
+            password=server.x3ui_password,
+        )
+        
+        inbounds = await x3ui.list_inbounds()
+        if not inbounds:
+            return {"inbounds": [], "error": "Не удалось получить список Inbounds. Проверьте настройки API 3x-UI."}
+        
+        # Форматируем список Inbounds
+        inbounds_list = []
+        for inbound in inbounds:
+            inbounds_list.append({
+                "id": inbound.get("id"),
+                "port": inbound.get("port"),
+                "protocol": inbound.get("protocol", "").lower(),
+                "remark": inbound.get("remark", ""),
+                "enable": inbound.get("enable", False),
+                "is_vless": inbound.get("protocol", "").lower() == "vless",
+            })
+        
+        return {"inbounds": inbounds_list}
+    except Exception as e:
+        import logging
+        logging.error(f"Ошибка при получении списка Inbounds для сервера {server_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Ошибка при получении списка Inbounds: {str(e)}")
 
 
 @app.post("/admin/web/api/servers")

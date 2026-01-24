@@ -439,8 +439,16 @@
                 </div>
                 <div class="form-group">
                     <label>Inbound ID в 3x-UI</label>
-                    <input type="number" id="x3ui_inbound_id" name="x3ui_inbound_id" placeholder="1">
-                    <small style="color: #666; font-size: 0.85em;">ID Inbound в 3x-UI, где будут создаваться клиенты</small>
+                    <div style="display: flex; gap: 10px; align-items: center;">
+                        <input type="number" id="x3ui_inbound_id" name="x3ui_inbound_id" placeholder="1" style="flex: 1;">
+                        <button type="button" onclick="loadInbounds()" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer;">Загрузить список</button>
+                    </div>
+                    <small style="color: #666; font-size: 0.85em;">ID Inbound в 3x-UI, где будут создаваться клиенты. Нажмите "Загрузить список" для автоматического получения доступных Inbounds.</small>
+                    <div id="inbounds_list" style="margin-top: 10px; display: none;">
+                        <select id="inbound_selector" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;" onchange="selectInbound(this.value)">
+                            <option value="">Выберите Inbound...</option>
+                        </select>
+                    </div>
                 </div>
                 <div class="form-group">
                     <label>Network</label>
@@ -677,6 +685,96 @@
             fetch(`/admin/web/api/servers/${id}`, { method: 'DELETE' })
                 .then(() => location.reload())
                 .catch(err => alert('Ошибка: ' + err.message));
+        }
+        
+        function loadInbounds() {
+            const serverId = document.getElementById('serverId').value;
+            const apiUrl = document.getElementById('x3ui_api_url').value;
+            const username = document.getElementById('x3ui_username').value;
+            const password = document.getElementById('x3ui_password').value;
+            
+            if (!apiUrl || !username || !password) {
+                alert('Сначала заполните поля: 3x-UI API URL, Username и Password');
+                return;
+            }
+            
+            // Если редактируем существующий сервер, используем его ID
+            const endpoint = serverId 
+                ? `/admin/web/api/servers/${serverId}/inbounds`
+                : null;
+            
+            if (!endpoint) {
+                alert('Сначала сохраните сервер с настройками API 3x-UI, затем загрузите список Inbounds');
+                return;
+            }
+            
+            const listDiv = document.getElementById('inbounds_list');
+            const selector = document.getElementById('inbound_selector');
+            
+            // Показываем загрузку
+            selector.innerHTML = '<option value="">Загрузка...</option>';
+            listDiv.style.display = 'block';
+            
+            fetch(endpoint)
+                .then(r => {
+                    if (!r.ok) {
+                        throw new Error(`HTTP error! status: ${r.status}`);
+                    }
+                    return r.json();
+                })
+                .then(data => {
+                    if (data.error) {
+                        alert('Ошибка: ' + data.error);
+                        listDiv.style.display = 'none';
+                        return;
+                    }
+                    
+                    selector.innerHTML = '<option value="">Выберите Inbound...</option>';
+                    
+                    if (!data.inbounds || data.inbounds.length === 0) {
+                        selector.innerHTML = '<option value="">Inbounds не найдены</option>';
+                        return;
+                    }
+                    
+                    // Группируем по протоколу
+                    const vlessInbounds = data.inbounds.filter(inb => inb.is_vless);
+                    const otherInbounds = data.inbounds.filter(inb => !inb.is_vless);
+                    
+                    if (vlessInbounds.length > 0) {
+                        const optgroup = document.createElement('optgroup');
+                        optgroup.label = 'VLESS (рекомендуется)';
+                        vlessInbounds.forEach(inb => {
+                            const option = document.createElement('option');
+                            option.value = inb.id;
+                            option.textContent = `ID: ${inb.id} | Порт: ${inb.port} | ${inb.remark || 'Без названия'} ${inb.enable ? '✅' : '❌'}`;
+                            optgroup.appendChild(option);
+                        });
+                        selector.appendChild(optgroup);
+                    }
+                    
+                    if (otherInbounds.length > 0) {
+                        const optgroup = document.createElement('optgroup');
+                        optgroup.label = 'Другие протоколы';
+                        otherInbounds.forEach(inb => {
+                            const option = document.createElement('option');
+                            option.value = inb.id;
+                            option.textContent = `ID: ${inb.id} | ${inb.protocol.toUpperCase()} | Порт: ${inb.port} | ${inb.remark || 'Без названия'}`;
+                            optgroup.appendChild(option);
+                        });
+                        selector.appendChild(optgroup);
+                    }
+                })
+                .catch(err => {
+                    console.error('Ошибка при загрузке Inbounds:', err);
+                    alert('Ошибка при загрузке списка Inbounds: ' + err.message);
+                    listDiv.style.display = 'none';
+                });
+        }
+        
+        function selectInbound(inboundId) {
+            if (inboundId) {
+                document.getElementById('x3ui_inbound_id').value = inboundId;
+            }
         }
         
         // Обработчик клика вне модалки (только для serverModal)
