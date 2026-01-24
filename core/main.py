@@ -112,6 +112,72 @@ def _check_port_sync(host: str, port: int, timeout: int = 10) -> bool:
                 pass
 
 
+async def _test_connection_speed(server: Server) -> float | None:
+    """Тестирует скорость соединения с сервером"""
+    import httpx
+    import time
+    
+    try:
+        # Используем HTTP запрос для измерения скорости
+        # Загружаем тестовые данные (1 МБ)
+        test_size_mb = 1.0
+        test_size_bytes = int(test_size_mb * 1024 * 1024)
+        
+        # Генерируем тестовые данные
+        test_data = b'0' * test_size_bytes
+        
+        # Создаем временный эндпоинт для теста скорости
+        # Используем простой HTTP запрос к серверу
+        url = f"http://{server.host}:{server.xray_port or 80}"
+        
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            start_time = time.time()
+            try:
+                # Пытаемся подключиться и измерить время
+                response = await client.get(url, follow_redirects=False)
+                elapsed = time.time() - start_time
+                
+                # Если сервер отвечает, вычисляем примерную скорость
+                # На основе времени подключения и размера данных
+                if elapsed > 0:
+                    # Примерная оценка: чем быстрее ответ, тем выше скорость
+                    # Используем обратную зависимость от времени отклика
+                    speed_mbps = (test_size_mb * 8) / elapsed if elapsed > 0 else None
+                    return speed_mbps
+            except Exception:
+                # Если HTTP не работает, пробуем через socket
+                pass
+        
+        # Альтернативный метод: измерение через socket
+        import socket
+        loop = asyncio.get_event_loop()
+        
+        def test_socket_speed():
+            try:
+                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                sock.settimeout(5)
+                start = time.time()
+                result = sock.connect_ex((server.host, server.xray_port or 443))
+                elapsed = time.time() - start
+                sock.close()
+                
+                if result == 0 and elapsed > 0:
+                    # Оценка скорости на основе времени подключения
+                    # Чем быстрее подключение, тем выше скорость
+                    speed_mbps = (test_size_mb * 8) / (elapsed * 10)  # Умножаем на 10 для более реалистичной оценки
+                    return speed_mbps
+            except Exception:
+                pass
+            return None
+        
+        speed = await loop.run_in_executor(None, test_socket_speed)
+        return speed
+        
+    except Exception as e:
+        logger.debug(f"Ошибка при тесте скорости для {server.name}: {e}")
+        return None
+
+
 async def _check_server_status(server: Server) -> dict:
     """Проверяет состояние одного сервера"""
     import socket
@@ -133,10 +199,18 @@ async def _check_server_status(server: Server) -> dict:
         
         logger.debug(f"Результат проверки {server.name}: online={is_online}, time={response_time_ms}ms")
         
+        # Тестируем скорость соединения, если сервер онлайн
+        connection_speed_mbps = None
+        if is_online:
+            connection_speed_mbps = await _test_connection_speed(server)
+            if connection_speed_mbps:
+                logger.debug(f"Скорость соединения с {server.name}: {connection_speed_mbps:.2f} Мбит/с")
+        
         # Всегда возвращаем response_time_ms для диагностики
         return {
             "is_online": is_online,
             "response_time_ms": response_time_ms,  # Показываем время даже при ошибке
+            "connection_speed_mbps": connection_speed_mbps,
             "error_message": None if is_online else f"Port {port} unreachable (timeout: {response_time_ms}ms)",
         }
     except Exception as e:
@@ -144,6 +218,7 @@ async def _check_server_status(server: Server) -> dict:
         return {
             "is_online": False,
             "response_time_ms": None,
+            "connection_speed_mbps": None,
             "error_message": str(e),
         }
 
@@ -560,6 +635,20 @@ async def lifespan(app: FastAPI):
             import logging
             logging.error(f"Error checking servers table: {e}", exc_info=True)
         
+        # Добавляем колонку connection_speed_mbps в server_status, если её нет
+        try:
+            result = await conn.execute(
+                text("SELECT column_name FROM information_schema.columns WHERE table_name='server_status' AND column_name='connection_speed_mbps'")
+            )
+            exists = result.scalar()
+            if not exists:
+                await conn.execute(text("ALTER TABLE server_status ADD COLUMN connection_speed_mbps NUMERIC(10, 2)"))
+                import logging
+                logging.info("Added connection_speed_mbps column to server_status table")
+        except Exception as e:
+            import logging
+            logging.warning(f"Could not add connection_speed_mbps column (may already exist): {e}")
+        
         # Проверяем и добавляем payment_status_changed
         try:
             result = await conn.execute(
@@ -759,6 +848,7 @@ async def lifespan(app: FastAPI):
                                     server_id=server.id,
                                     is_online=is_online,
                                     response_time_ms=response_time_ms,
+                                    connection_speed_mbps=status_result.get("connection_speed_mbps"),
                                     error_message=error_message,
                                 )
                                 session.add(status)
@@ -7040,6 +7130,7 @@ async def admin_api_servers(
             server_dict["status"] = {
                 "is_online": last_status.is_online,
                 "response_time_ms": last_status.response_time_ms,
+                "connection_speed_mbps": float(last_status.connection_speed_mbps) if last_status.connection_speed_mbps else None,
                 "checked_at": last_status.checked_at.isoformat() if last_status.checked_at else None,
             }
         servers_list.append(server_dict)

@@ -300,6 +300,7 @@ class ServerStatus(Base):
     server_id: Mapped[int] = mapped_column(ForeignKey("servers.id", ondelete="CASCADE"), nullable=False, index=True)
     is_online: Mapped[bool] = mapped_column(Boolean, nullable=False)
     response_time_ms: Mapped[int | None] = mapped_column(Integer)  # Время отклика в миллисекундах
+    connection_speed_mbps: Mapped[float | None] = mapped_column(Numeric(10, 2))  # Скорость соединения в Мбит/с
     active_connections: Mapped[int | None] = mapped_column(Integer)  # Количество активных подключений
     cpu_usage_percent: Mapped[float | None] = mapped_column(String(10))  # Использование CPU в процентах
     memory_usage_percent: Mapped[float | None] = mapped_column(String(10))  # Использование памяти в процентах

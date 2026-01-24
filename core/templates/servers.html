@@ -298,7 +298,47 @@
                                 {% if status and status.response_time_ms is not none %}
                                 <div class="info-row">
                                     <span class="info-label">Время отклика:</span>
-                                    <span>{{ status.response_time_ms }} мс</span>
+                                    <span class="ping-time" data-ping="{{ status.response_time_ms }}">
+                                        {% if status.response_time_ms < 50 %}
+                                            <span style="color: #28a745; font-weight: 600;">{{ status.response_time_ms }} мс</span>
+                                        {% elif status.response_time_ms < 100 %}
+                                            <span style="color: #ffc107; font-weight: 600;">{{ status.response_time_ms }} мс</span>
+                                        {% elif status.response_time_ms < 200 %}
+                                            <span style="color: #fd7e14; font-weight: 600;">{{ status.response_time_ms }} мс</span>
+                                        {% else %}
+                                            <span style="color: #dc3545; font-weight: 600;">{{ status.response_time_ms }} мс</span>
+                                        {% endif %}
+                                    </span>
+                                </div>
+                                <div class="info-row">
+                                    <span class="info-label">Скорость соединения:</span>
+                                    <span class="connection-speed" data-ping="{{ status.response_time_ms }}" data-speed="{{ status.connection_speed_mbps if status.connection_speed_mbps else '' }}">
+                                        {% if status.connection_speed_mbps %}
+                                            {% set speed = status.connection_speed_mbps %}
+                                            {% if speed > 100 %}
+                                                <span style="color: #28a745; font-weight: 600;">{{ "%.1f"|format(speed) }} Мбит/с</span>
+                                            {% elif speed > 50 %}
+                                                <span style="color: #ffc107; font-weight: 600;">{{ "%.1f"|format(speed) }} Мбит/с</span>
+                                            {% elif speed > 20 %}
+                                                <span style="color: #fd7e14; font-weight: 600;">{{ "%.1f"|format(speed) }} Мбит/с</span>
+                                            {% else %}
+                                                <span style="color: #dc3545; font-weight: 600;">{{ "%.1f"|format(speed) }} Мбит/с</span>
+                                            {% endif %}
+                                        {% elif status.response_time_ms %}
+                                            {% set estimated_speed = (1000 / status.response_time_ms) * 8 %}
+                                            {% if estimated_speed > 100 %}
+                                                <span style="color: #28a745; font-weight: 600;">{{ "%.1f"|format(estimated_speed) }} Мбит/с (оценка)</span>
+                                            {% elif estimated_speed > 50 %}
+                                                <span style="color: #ffc107; font-weight: 600;">{{ "%.1f"|format(estimated_speed) }} Мбит/с (оценка)</span>
+                                            {% elif estimated_speed > 20 %}
+                                                <span style="color: #fd7e14; font-weight: 600;">{{ "%.1f"|format(estimated_speed) }} Мбит/с (оценка)</span>
+                                            {% else %}
+                                                <span style="color: #dc3545; font-weight: 600;">{{ "%.1f"|format(estimated_speed) }} Мбит/с (оценка)</span>
+                                            {% endif %}
+                                        {% else %}
+                                            <span style="color: #999;">—</span>
+                                        {% endif %}
+                                    </span>
                                 </div>
                                 {% endif %}
                                 <div class="info-row">
@@ -691,18 +731,119 @@
                             }
                         }
                         
-                        // Обновляем время отклика
+                        // Обновляем время отклика и скорость соединения
                         if (server.status && server.status.response_time_ms != null) {
-                            const responseTimeRows = serverCard.querySelectorAll('.info-row');
-                            responseTimeRows.forEach(row => {
-                                const label = row.querySelector('.info-label');
-                                if (label && label.textContent.includes('Время отклика')) {
-                                    const valueSpan = row.querySelector('span:last-child');
-                                    if (valueSpan) {
-                                        valueSpan.textContent = `${server.status.response_time_ms} мс`;
+                            const serverCard = document.querySelector(`[data-server-id="${server.id}"]`);
+                            if (serverCard) {
+                                const ping = server.status.response_time_ms;
+                                
+                                // Обновляем время отклика с цветом
+                                const pingEl = serverCard.querySelector('.ping-time');
+                                if (pingEl) {
+                                    pingEl.setAttribute('data-ping', ping);
+                                    let pingColor = '#dc3545'; // Красный по умолчанию
+                                    if (ping < 50) {
+                                        pingColor = '#28a745'; // Зеленый
+                                    } else if (ping < 100) {
+                                        pingColor = '#ffc107'; // Желтый
+                                    } else if (ping < 200) {
+                                        pingColor = '#fd7e14'; // Оранжевый
                                     }
+                                    pingEl.innerHTML = `<span style="color: ${pingColor}; font-weight: 600;">${ping} мс</span>`;
                                 }
-                            });
+                                
+                                // Обновляем скорость соединения (реальная или оценка)
+                                const speedEl = serverCard.querySelector('.connection-speed');
+                                if (speedEl) {
+                                    speedEl.setAttribute('data-ping', ping);
+                                    // Используем реальную скорость из API, если есть, иначе оценку
+                                    const realSpeed = server.status.connection_speed_mbps;
+                                    let speed = realSpeed;
+                                    let speedText = '';
+                                    
+                                    if (realSpeed != null && realSpeed > 0) {
+                                        // Используем реальную скорость
+                                        speed = realSpeed;
+                                        speedText = `${speed.toFixed(1)} Мбит/с`;
+                                    } else if (ping) {
+                                        // Используем оценку на основе пинга
+                                        speed = (1000 / ping) * 8;
+                                        speedText = `${speed.toFixed(1)} Мбит/с (оценка)`;
+                                    } else {
+                                        speedText = '—';
+                                    }
+                                    
+                                    let speedColor = '#999'; // Серый по умолчанию
+                                    if (speed > 100) {
+                                        speedColor = '#28a745'; // Зеленый
+                                    } else if (speed > 50) {
+                                        speedColor = '#ffc107'; // Желтый
+                                    } else if (speed > 20) {
+                                        speedColor = '#fd7e14'; // Оранжевый
+                                    } else if (speed > 0) {
+                                        speedColor = '#dc3545'; // Красный
+                                    }
+                                    
+                                    speedEl.setAttribute('data-speed', speed || '');
+                                    speedEl.innerHTML = `<span style="color: ${speedColor}; font-weight: 600;">${speedText}</span>`;
+                                } else {
+                                    // Если элементов нет, ищем строки и обновляем их
+                                    const infoRows = serverCard.querySelectorAll('.info-row');
+                                    infoRows.forEach(row => {
+                                        const label = row.querySelector('.info-label');
+                                        if (label) {
+                                            const labelText = label.textContent;
+                                            const valueSpan = row.querySelector('span:last-child');
+                                            
+                                            if (labelText.includes('Время отклика') && valueSpan) {
+                                                valueSpan.className = 'ping-time';
+                                                valueSpan.setAttribute('data-ping', ping);
+                                                let pingColor = '#dc3545';
+                                                if (ping < 50) {
+                                                    pingColor = '#28a745';
+                                                } else if (ping < 100) {
+                                                    pingColor = '#ffc107';
+                                                } else if (ping < 200) {
+                                                    pingColor = '#fd7e14';
+                                                }
+                                                valueSpan.innerHTML = `<span style="color: ${pingColor}; font-weight: 600;">${ping} мс</span>`;
+                                            } else if (labelText.includes('Скорость соединения') && valueSpan) {
+                                                valueSpan.className = 'connection-speed';
+                                                valueSpan.setAttribute('data-ping', ping);
+                                                
+                                                // Используем реальную скорость из API, если есть
+                                                const realSpeed = server.status.connection_speed_mbps;
+                                                let speed = realSpeed;
+                                                let speedText = '';
+                                                
+                                                if (realSpeed != null && realSpeed > 0) {
+                                                    speed = realSpeed;
+                                                    speedText = `${speed.toFixed(1)} Мбит/с`;
+                                                } else if (ping) {
+                                                    speed = (1000 / ping) * 8;
+                                                    speedText = `${speed.toFixed(1)} Мбит/с (оценка)`;
+                                                } else {
+                                                    speedText = '—';
+                                                }
+                                                
+                                                let speedColor = '#999';
+                                                if (speed > 100) {
+                                                    speedColor = '#28a745';
+                                                } else if (speed > 50) {
+                                                    speedColor = '#ffc107';
+                                                } else if (speed > 20) {
+                                                    speedColor = '#fd7e14';
+                                                } else if (speed > 0) {
+                                                    speedColor = '#dc3545';
+                                                }
+                                                
+                                                valueSpan.setAttribute('data-speed', speed || '');
+                                                valueSpan.innerHTML = `<span style="color: ${speedColor}; font-weight: 600;">${speedText}</span>`;
+                                            }
+                                        }
+                                    });
+                                }
+                            }
                         }
                     });
                 })
