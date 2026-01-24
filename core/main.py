@@ -6974,6 +6974,7 @@ async def _generate_vpn_config_for_user_server(user_id: int, server_id: int, ses
         
         config_text = None
         user_uuid = None
+        x3ui = None
         
         try:
             x3ui = X3UIAPI(
@@ -7119,6 +7120,13 @@ async def _generate_vpn_config_for_user_server(user_id: int, server_id: int, ses
             else:
                 logger.warning(f"Ошибка при создании клиента через API 3x-UI для сервера {server.name}: {e}")
                 raise
+        finally:
+            # Закрываем сессию 3x-UI API
+            if x3ui:
+                try:
+                    await x3ui.close()
+                except:
+                    pass
         
         # Если конфиг не был создан через API, но есть UUID, используем fallback
         if not config_text or not user_uuid:
@@ -7287,6 +7295,7 @@ async def admin_api_get_server_inbounds(
     if not server.x3ui_api_url or not server.x3ui_username or not server.x3ui_password:
         raise HTTPException(status_code=400, detail="3x_ui_api_not_configured")
     
+    x3ui = None
     try:
         from core.x3ui_api import X3UIAPI
         x3ui = X3UIAPI(
@@ -7316,6 +7325,12 @@ async def admin_api_get_server_inbounds(
         import logging
         logging.error(f"Ошибка при получении списка Inbounds для сервера {server_id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Ошибка при получении списка Inbounds: {str(e)}")
+    finally:
+        if x3ui:
+            try:
+                await x3ui.close()
+            except:
+                pass
 
 
 @app.post("/admin/web/api/servers")

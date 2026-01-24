@@ -1,9 +1,13 @@
 """
 Модуль для работы с API 3x-UI для автоматического управления клиентами
+
+3x-UI API работает через сессию (cookies), НЕ stateless.
+Правильная последовательность:
+1. POST /login → получаем cookies
+2. POST /panel/api/inbounds/addClient (с теми же cookies)
 """
 from __future__ import annotations
 
-import base64
 import json
 import logging
 from typing import Any
@@ -14,94 +18,89 @@ logger = logging.getLogger(__name__)
 
 
 class X3UIAPI:
-    """Клиент для работы с API 3x-UI"""
+    """Клиент для работы с API 3x-UI через сессию"""
     
     def __init__(self, api_url: str, username: str, password: str):
         """
         Инициализация клиента API 3x-UI
         
         Args:
-            api_url: URL API 3x-UI (например: http://ip:2053/panel/api)
+            api_url: URL API 3x-UI (например: http://ip:2053/panel/api или http://ip:2053/{WEBBASEPATH}/panel/api)
             username: Имя пользователя для авторизации
             password: Пароль для авторизации
         """
         self.api_url = api_url.rstrip("/")
         self.username = username
         self.password = password
-        self._token: str | None = None
+        # Базовый URL (без /panel/api) для логина
+        self.base_url = self.api_url.replace("/panel/api", "")
+        # Сессия будет создана при login()
+        self._session: httpx.AsyncClient | None = None
+        self._logged_in = False
     
-    def _get_auth_headers(self) -> dict[str, str]:
-        """Получить заголовки для авторизации"""
-        headers = {}
-        if self._token:
-            headers["Authorization"] = f"Bearer {self._token}"
-        elif not self._cookies:
-            # Базовая авторизация через base64 (fallback)
-            credentials = f"{self.username}:{self.password}"
-            encoded = base64.b64encode(credentials.encode()).decode()
-            headers["Authorization"] = f"Basic {encoded}"
-        return headers
+    async def _ensure_session(self):
+        """Убедиться, что сессия создана и авторизована"""
+        if self._session is None:
+            self._session = httpx.AsyncClient(timeout=15.0, follow_redirects=True)
+        
+        if not self._logged_in:
+            await self.login()
     
-    def _get_cookies(self) -> dict[str, str] | None:
-        """Получить cookies для авторизации"""
-        return self._cookies
+    async def close(self):
+        """Закрыть сессию"""
+        if self._session:
+            await self._session.aclose()
+            self._session = None
+            self._logged_in = False
     
     async def login(self) -> bool:
         """
-        Авторизация в API 3x-UI через /login/ endpoint
-        
-        Согласно документации, сначала нужно сделать POST /login/ с username/password,
-        получить cookie сессии, и дальше использовать эту cookie для API запросов.
+        Авторизация в API 3x-UI через POST /login
+        Cookies автоматически сохраняются в сессии.
         
         Returns:
             True если авторизация успешна, False иначе
         """
+        if self._session is None:
+            self._session = httpx.AsyncClient(timeout=15.0, follow_redirects=True)
+        
+        login_endpoint = f"{self.base_url}/login"
+        logger.info(f"Авторизация в 3x-UI: {login_endpoint}")
+        
         try:
-            # Получаем базовый URL без /panel/api для логина
-            # Логин обычно находится на уровне панели, не API
-            base_url = self.api_url.replace("/panel/api", "")
-            login_endpoint = f"{base_url}/login"
+            response = await self._session.post(
+                login_endpoint,
+                data={
+                    "username": self.username,
+                    "password": self.password
+                },
+            )
             
-            async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
-                # Пробуем логин через form-data (как обычно в веб-формах)
-                response = await client.post(
-                    login_endpoint,
-                    data={
-                        "username": self.username,
-                        "password": self.password
-                    },
-                    headers={"Content-Type": "application/x-www-form-urlencoded"},
-                )
-                
-                if response.status_code == 200:
-                    # Проверяем, есть ли cookie сессии
-                    cookies = response.cookies
-                    if cookies:
-                        # Сохраняем cookies для последующих запросов
-                        self._cookies = dict(cookies)
-                        logger.info(f"Успешная авторизация в 3x-UI через cookie (API URL: {self.api_url})")
+            logger.debug(f"Ответ от login: статус {response.status_code}, cookies: {dict(self._session.cookies)}")
+            
+            if response.status_code == 200:
+                # Проверяем успешность по ответу
+                try:
+                    data = response.json()
+                    if data.get("success"):
+                        self._logged_in = True
+                        logger.info(f"Успешная авторизация в 3x-UI (API URL: {self.api_url})")
                         return True
-                    
-                    # Проверяем, есть ли токен в ответе
-                    try:
-                        data = response.json()
-                        if "token" in data:
-                            self._token = data["token"]
-                            logger.info(f"Успешная авторизация в 3x-UI через токен (API URL: {self.api_url})")
-                            return True
-                        elif "access_token" in data:
-                            self._token = data["access_token"]
-                            logger.info(f"Успешная авторизация в 3x-UI через access_token (API URL: {self.api_url})")
-                            return True
-                    except:
-                        pass
-                
-                # Если не получилось через cookie/token, используем Basic Auth
-                logger.info(f"Используем Basic Auth для 3x-UI (API URL: {self.api_url})")
-                return True  # Basic Auth будет использоваться в заголовках
+                    else:
+                        logger.warning(f"Авторизация не удалась: {data.get('msg', 'Unknown error')}")
+                        return False
+                except:
+                    # Если ответ не JSON, проверяем cookies
+                    if self._session.cookies:
+                        self._logged_in = True
+                        logger.info(f"Успешная авторизация в 3x-UI через cookies (API URL: {self.api_url})")
+                        return True
+            
+            logger.warning(f"Ошибка авторизации в 3x-UI: HTTP {response.status_code}")
+            return False
         except Exception as e:
-            logger.warning(f"Ошибка авторизации в 3x-UI (API URL: {self.api_url}): {e}. Используем Basic Auth.")
-            return True  # Fallback на Basic Auth
+            logger.error(f"Ошибка авторизации в 3x-UI (API URL: {self.api_url}): {e}")
+            return False
     
     async def list_inbounds(self) -> list[dict[str, Any]]:
         """
@@ -110,34 +109,24 @@ class X3UIAPI:
         Returns:
             Список Inbounds или пустой список при ошибке
         """
+        await self._ensure_session()
+        
         try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                response = await client.get(
-                    f"{self.api_url}/inbounds/list",
-                    headers=self._get_auth_headers(),
-                )
-                
-                if response.status_code == 200:
-                    data = response.json()
-                    if data.get("success") and "obj" in data:
-                        return data["obj"]
-                
-                return []
+            response = await self._session.get(f"{self.api_url}/inbounds/list")
+            
+            if response.status_code == 200:
+                data = response.json()
+                if data.get("success") and "obj" in data:
+                    return data["obj"]
+            
+            logger.warning(f"Не удалось получить список Inbounds: HTTP {response.status_code}")
+            return []
         except Exception as e:
             logger.error(f"Ошибка при получении списка Inbounds из 3x-UI: {e}")
             return []
     
     async def find_inbound_by_port_and_protocol(self, port: int, protocol: str = "vless") -> dict[str, Any] | None:
-        """
-        Найти Inbound по порту и протоколу
-        
-        Args:
-            port: Порт Inbound
-            protocol: Протокол (vless, vmess, trojan и т.д.)
-        
-        Returns:
-            Данные Inbound или None если не найден
-        """
+        """Найти Inbound по порту и протоколу"""
         inbounds = await self.list_inbounds()
         for inbound in inbounds:
             if inbound.get("port") == port and inbound.get("protocol", "").lower() == protocol.lower():
@@ -145,12 +134,7 @@ class X3UIAPI:
         return None
     
     async def find_first_vless_inbound(self) -> dict[str, Any] | None:
-        """
-        Найти первый доступный VLESS Inbound (если поиск по порту не дал результата)
-        
-        Returns:
-            Данные первого VLESS Inbound или None если не найден
-        """
+        """Найти первый доступный VLESS Inbound"""
         inbounds = await self.list_inbounds()
         for inbound in inbounds:
             if inbound.get("protocol", "").lower() == "vless":
@@ -158,26 +142,12 @@ class X3UIAPI:
         return None
     
     async def get_inbound(self, inbound_id: int) -> dict[str, Any] | None:
-        """
-        Получить информацию о Inbound
-        
-        Args:
-            inbound_id: ID Inbound в 3x-UI
-        
-        Returns:
-            Данные Inbound или None при ошибке
-        """
-        try:
-            inbounds = await self.list_inbounds()
-            # Ищем нужный Inbound по ID
-            for inbound in inbounds:
-                if inbound.get("id") == inbound_id:
-                    return inbound
-            
-            return None
-        except Exception as e:
-            logger.error(f"Ошибка при получении Inbound из 3x-UI: {e}")
-            return None
+        """Получить информацию о Inbound по ID"""
+        inbounds = await self.list_inbounds()
+        for inbound in inbounds:
+            if inbound.get("id") == inbound_id:
+                return inbound
+        return None
     
     async def add_client(
         self,
@@ -190,12 +160,16 @@ class X3UIAPI:
         total_gb: int = 0,
     ) -> dict[str, Any] | None:
         """
-        Добавить клиента в Inbound (упрощенный вариант по алгоритму ChatGPT)
+        Добавить клиента в Inbound
+        
+        Согласно документации 3x-UI:
+        POST /panel/api/inbounds/addClient
+        form-data: id=<inbound_id>, settings=<json>
         
         Args:
             inbound_id: ID Inbound в 3x-UI
             email: Email/ID клиента
-            uuid: UUID клиента (если None, будет сгенерирован автоматически)
+            uuid: UUID клиента (если None, будет сгенерирован)
             flow: Flow control (xtls-rprx-vision и т.д.)
             expire: Дата истечения (timestamp в миллисекундах, 0 = без ограничений)
             limit_ip: Лимит IP адресов (0 = без ограничений)
@@ -204,302 +178,250 @@ class X3UIAPI:
         Returns:
             Данные созданного клиента с UUID или None при ошибке
         """
+        await self._ensure_session()
+        
+        # Генерируем UUID если не указан
+        if not uuid:
+            from core.xray import generate_uuid
+            uuid = generate_uuid()
+        
+        endpoint = f"{self.api_url}/inbounds/addClient"
+        
+        # Формат settings согласно документации
+        settings = {
+            "clients": [{
+                "id": uuid,
+                "email": email,
+                "limitIp": limit_ip,
+                "totalGB": total_gb,
+                "expiryTime": expire,
+                "enable": True,
+                "flow": flow if flow else ""
+            }]
+        }
+        
+        form_data = {
+            "id": str(inbound_id),
+            "settings": json.dumps(settings)
+        }
+        
+        logger.info(f"Добавление клиента в 3x-UI: endpoint={endpoint}, inbound_id={inbound_id}, email={email}, uuid={uuid}")
+        
         try:
-            # Генерируем UUID если не указан
-            if not uuid:
-                from core.xray import generate_uuid
-                uuid = generate_uuid()
+            response = await self._session.post(endpoint, data=form_data)
             
-            # Проверяем, что API URL правильный
-            if not self.api_url.endswith("/panel/api"):
-                logger.warning(f"API URL может быть неправильным: {self.api_url}. Ожидается формат: http://IP:2053/panel/api")
+            logger.debug(f"Ответ от addClient: статус {response.status_code}, тело: {response.text[:500]}")
             
-            logger.info(f"Попытка создать клиента через 3x-UI API: URL={self.api_url}, inbound_id={inbound_id}, email={email}, uuid={uuid}")
-            logger.debug(f"Добавление клиента: inbound_id={inbound_id}, email={email}, uuid={uuid}, api_url={self.api_url}")
-            
-            # Согласно официальной документации 3x-UI API:
-            # POST /panel/api/inbounds/addClient (БЕЗ /inbounds/{id}/ перед addClient)
-            # Используется form-data формат
-            async with httpx.AsyncClient(timeout=10.0) as http_client:
-                # Правильный endpoint согласно документации
-                endpoint = f"{self.api_url}/inbounds/addClient"
-                
-                # Формат settings согласно документации (JSON строка в form-data)
-                settings_json = json.dumps({
-                    "clients": [{
+            if response.status_code == 200:
+                result = response.json()
+                if result.get("success"):
+                    logger.info(f"Клиент {email} успешно добавлен в Inbound {inbound_id} с UUID {uuid}")
+                    return {
                         "id": uuid,
+                        "uuid": uuid,
                         "email": email,
-                        "limitIp": limit_ip,
-                        "totalGB": 0,  # Без ограничений трафика
-                        "expiryTime": expire,
-                        "enable": True,
-                        "flow": flow if flow else ""
-                    }]
-                })
-                
-                # Form-data согласно документации
-                form_data = {
-                    "id": str(inbound_id),
-                    "settings": settings_json
-                }
-                
-                try:
-                    # Используем cookies если есть, иначе заголовки авторизации
-                    cookies = self._get_cookies()
-                    response = await http_client.post(
-                        endpoint,
-                        data=form_data,  # Используем data= для form-data, не json=
-                        headers=self._get_auth_headers(),
-                        cookies=cookies if cookies else None,
-                    )
-                    logger.debug(f"Ответ от {endpoint}: статус {response.status_code}, тело: {response.text[:200]}")
-                    
-                    if response.status_code == 200:
-                        result = response.json()
-                        if result.get("success"):
-                            logger.info(f"Клиент {email} успешно добавлен в Inbound {inbound_id} с UUID {uuid}")
-                            return {
-                                "id": uuid,
-                                "uuid": uuid,
-                                "email": email,
-                            }
-                        else:
-                            logger.warning(f"API вернул success=false для {endpoint}: {result}")
-                            raise ValueError(f"API вернул success=false: {result.get('msg', 'Unknown error')}")
-                    else:
-                        logger.warning(f"HTTP {response.status_code} от {endpoint} (API URL: {self.api_url}): {response.text[:200]}")
-                        response.raise_for_status()
-                except httpx.HTTPStatusError as e:
-                    logger.error(f"HTTP ошибка при добавлении клиента в 3x-UI (API URL: {self.api_url}, Inbound ID: {inbound_id}): {e}")
-                    raise
-                except httpx.RequestError as e:
-                    logger.error(f"Сетевая ошибка при добавлении клиента в 3x-UI (API URL: {self.api_url}, Inbound ID: {inbound_id}): {e}")
-                    raise
-                except Exception as e:
-                    logger.error(f"Ошибка при добавлении клиента в 3x-UI (API URL: {self.api_url}, Inbound ID: {inbound_id}): {e}", exc_info=True)
-                    raise
-                
-                # Если ничего не сработало, пробрасываем последнюю ошибку для правильной обработки
-                if last_exception:
-                    raise last_exception
-                elif last_response and last_response.status_code != 200:
-                    last_response.raise_for_status()
-                
-                # Если дошли сюда, значит все попытки не удались без ошибок
-                # (все ответы были 200, но success=false, или вообще не было ответов)
-                logger.error(
-                    f"Не удалось добавить клиента в Inbound {inbound_id}. "
-                    f"API URL: {self.api_url}, "
-                    f"Попробованы endpoints: {endpoints_v1}, "
-                    f"Попробованы оба формата payload. "
-                    f"Email: {email}, UUID: {uuid}"
-                )
-                raise ValueError(f"Не удалось добавить клиента в Inbound {inbound_id}")
-        except (httpx.HTTPStatusError, httpx.RequestError) as e:
-            # Пробрасываем HTTP ошибки дальше для правильной обработки
-            logger.error(f"HTTP ошибка при добавлении клиента в 3x-UI (API URL: {self.api_url}, Inbound ID: {inbound_id}): {e}")
+                    }
+                else:
+                    error_msg = result.get('msg', 'Unknown error')
+                    logger.warning(f"API вернул success=false: {error_msg}")
+                    raise ValueError(f"3x-UI API error: {error_msg}")
+            else:
+                logger.error(f"HTTP {response.status_code} от {endpoint}: {response.text[:500]}")
+                response.raise_for_status()
+        except httpx.HTTPStatusError as e:
+            logger.error(f"HTTP ошибка при добавлении клиента (API URL: {self.api_url}, Inbound ID: {inbound_id}): {e}")
+            raise
+        except httpx.RequestError as e:
+            logger.error(f"Сетевая ошибка при добавлении клиента (API URL: {self.api_url}, Inbound ID: {inbound_id}): {e}")
+            raise
+        except ValueError:
             raise
         except Exception as e:
-            # Другие ошибки тоже пробрасываем
-            logger.error(f"Ошибка при добавлении клиента в 3x-UI (API URL: {self.api_url}, Inbound ID: {inbound_id}): {e}", exc_info=True)
+            logger.error(f"Ошибка при добавлении клиента (API URL: {self.api_url}, Inbound ID: {inbound_id}): {e}", exc_info=True)
             raise
+        
+        return None
     
     async def delete_client(self, inbound_id: int, email: str) -> bool:
         """
         Удалить клиента из Inbound
         
         Args:
-            inbound_id: ID Inbound в 3x-UI
-            email: Email/ID клиента для удаления
+            inbound_id: ID Inbound
+            email: Email клиента для удаления
         
         Returns:
-            True если удаление успешно, False иначе
+            True если удаление успешно
         """
+        await self._ensure_session()
+        
+        endpoint = f"{self.api_url}/inbounds/{inbound_id}/delClient/{email}"
+        
         try:
-            # Получаем текущий Inbound
-            inbound = await self.get_inbound(inbound_id)
-            if not inbound:
-                logger.warning(f"Inbound {inbound_id} не найден в 3x-UI (возможно, был удален или изменен ID)")
-                return False
+            response = await self._session.post(endpoint)
             
-            # Парсим settings
-            settings = json.loads(inbound.get("settings", "{}"))
-            clients = settings.get("clients", [])
+            if response.status_code == 200:
+                result = response.json()
+                if result.get("success"):
+                    logger.info(f"Клиент {email} удален из Inbound {inbound_id}")
+                    return True
+                else:
+                    logger.warning(f"Не удалось удалить клиента: {result.get('msg', 'Unknown error')}")
             
-            # Удаляем клиента
-            clients = [c for c in clients if c.get("email") != email]
-            settings["clients"] = clients
-            
-            # Согласно документации 3x-UI API, используем endpoint для удаления клиента
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                # Попробуем стандартный endpoint для удаления клиента
-                endpoints = [
-                    f"{self.api_url}/inbounds/{inbound_id}/delClient",  # Стандартный endpoint
-                    f"{self.api_url}/inbounds/delClient",  # Альтернативный вариант
-                ]
-                
-                # Формат запроса для удаления клиента
-                payload = {
-                    "id": inbound_id,
-                    "email": email,
-                }
-                
-                for endpoint in endpoints:
-                    try:
-                        response = await client.post(
-                            endpoint,
-                            json=payload,
-                            headers=self._get_auth_headers(),
-                        )
-                        if response.status_code == 200:
-                            result = response.json()
-                            if result.get("success"):
-                                return True
-                    except Exception as e:
-                        logger.debug(f"Ошибка при вызове {endpoint}: {e}")
-                        continue
-                
-                # Если не сработало через delClient, пробуем обновить весь Inbound
-                endpoints_update = [
-                    f"{self.api_url}/inbounds/update/{inbound_id}",
-                    f"{self.api_url}/inbound/update/{inbound_id}",
-                ]
-                
-                payload_update = {
-                    "id": inbound_id,
-                    "settings": json.dumps(settings),
-                    "streamSettings": inbound.get("streamSettings", ""),
-                    "sniffing": inbound.get("sniffing", ""),
-                    "remark": inbound.get("remark", ""),
-                    "enable": inbound.get("enable", True),
-                    "expiryTime": inbound.get("expiryTime", 0),
-                    "listen": inbound.get("listen", ""),
-                    "port": inbound.get("port"),
-                    "protocol": inbound.get("protocol", "vless"),
-                }
-                
-                for endpoint in endpoints_update:
-                    try:
-                        response = await client.post(
-                            endpoint,
-                            json=payload_update,
-                            headers=self._get_auth_headers(),
-                        )
-                        if response.status_code == 200:
-                            result = response.json()
-                            if result.get("success"):
-                                return True
-                    except Exception as e:
-                        logger.debug(f"Ошибка при вызове {endpoint}: {e}")
-                        continue
-                
-                logger.error(f"Не удалось удалить клиента из 3x-UI через API")
-                return False
+            return False
         except Exception as e:
             logger.error(f"Ошибка при удалении клиента из 3x-UI: {e}")
             return False
     
-    async def get_client_config(
+    async def update_client(
         self,
         inbound_id: int,
-        email: str,
-        server_host: str,
-        server_port: int | None = None,
-    ) -> str | None:
+        client_uuid: str,
+        email: str | None = None,
+        enable: bool | None = None,
+        expire: int | None = None,
+        limit_ip: int | None = None,
+        total_gb: int | None = None,
+    ) -> bool:
         """
-        Получить конфиг клиента (vless://...) из Inbound
+        Обновить настройки клиента
         
         Args:
-            inbound_id: ID Inbound в 3x-UI
-            email: Email/ID клиента
-            server_host: IP или домен сервера
-            server_port: Порт сервера (если None, берется из Inbound)
+            inbound_id: ID Inbound
+            client_uuid: UUID клиента
+            email: Новый email (опционально)
+            enable: Включить/выключить клиента (опционально)
+            expire: Новая дата истечения (опционально)
+            limit_ip: Новый лимит IP (опционально)
+            total_gb: Новый лимит трафика (опционально)
         
         Returns:
-            VLESS конфиг или None при ошибке
+            True если обновление успешно
         """
+        await self._ensure_session()
+        
+        # Сначала получаем текущие данные клиента
+        inbound = await self.get_inbound(inbound_id)
+        if not inbound:
+            logger.warning(f"Inbound {inbound_id} не найден")
+            return False
+        
+        # Парсим settings
         try:
-            # Получаем Inbound
-            inbound = await self.get_inbound(inbound_id)
-            if not inbound:
-                logger.warning(f"Inbound {inbound_id} не найден в 3x-UI (возможно, был удален или изменен ID)")
-                return None
+            settings = json.loads(inbound.get("settings", "{}"))
+            clients = settings.get("clients", [])
+        except:
+            logger.error(f"Ошибка парсинга settings для Inbound {inbound_id}")
+            return False
+        
+        # Ищем клиента по UUID
+        client_found = False
+        for client in clients:
+            if client.get("id") == client_uuid:
+                client_found = True
+                if email is not None:
+                    client["email"] = email
+                if enable is not None:
+                    client["enable"] = enable
+                if expire is not None:
+                    client["expiryTime"] = expire
+                if limit_ip is not None:
+                    client["limitIp"] = limit_ip
+                if total_gb is not None:
+                    client["totalGB"] = total_gb
+                break
+        
+        if not client_found:
+            logger.warning(f"Клиент с UUID {client_uuid} не найден в Inbound {inbound_id}")
+            return False
+        
+        # Отправляем обновление через updateClient
+        endpoint = f"{self.api_url}/inbounds/updateClient/{client_uuid}"
+        
+        form_data = {
+            "id": str(inbound_id),
+            "settings": json.dumps({"clients": clients})
+        }
+        
+        try:
+            response = await self._session.post(endpoint, data=form_data)
             
-            # Парсим settings для поиска клиента
+            if response.status_code == 200:
+                result = response.json()
+                if result.get("success"):
+                    logger.info(f"Клиент {client_uuid} обновлен в Inbound {inbound_id}")
+                    return True
+            
+            return False
+        except Exception as e:
+            logger.error(f"Ошибка при обновлении клиента в 3x-UI: {e}")
+            return False
+    
+    async def get_client_config(self, inbound_id: int, email: str) -> dict[str, Any] | None:
+        """
+        Получить конфиг клиента из Inbound
+        
+        Args:
+            inbound_id: ID Inbound
+            email: Email клиента
+        
+        Returns:
+            Данные клиента или None
+        """
+        inbound = await self.get_inbound(inbound_id)
+        if not inbound:
+            return None
+        
+        try:
             settings = json.loads(inbound.get("settings", "{}"))
             clients = settings.get("clients", [])
             
-            # Ищем клиента по email
-            client_data = None
             for client in clients:
                 if client.get("email") == email:
-                    client_data = client
-                    break
+                    # Добавляем данные из inbound для генерации конфига
+                    stream_settings = json.loads(inbound.get("streamSettings", "{}"))
+                    return {
+                        "uuid": client.get("id"),
+                        "email": client.get("email"),
+                        "flow": client.get("flow", ""),
+                        "port": inbound.get("port"),
+                        "protocol": inbound.get("protocol"),
+                        "network": stream_settings.get("network", "tcp"),
+                        "security": stream_settings.get("security", "none"),
+                        "reality_settings": stream_settings.get("realitySettings", {}),
+                        "tls_settings": stream_settings.get("tlsSettings", {}),
+                        "ws_settings": stream_settings.get("wsSettings", {}),
+                        "grpc_settings": stream_settings.get("grpcSettings", {}),
+                    }
             
-            if not client_data:
-                logger.error(f"Клиент {email} не найден в Inbound {inbound_id}")
-                return None
-            
-            uuid = client_data.get("id")
-            if not uuid:
-                logger.error(f"UUID не найден для клиента {email}")
-                return None
-            
-            # Парсим streamSettings для получения параметров сети
-            stream_settings = json.loads(inbound.get("streamSettings", "{}"))
-            network = stream_settings.get("network", "tcp")
-            security = stream_settings.get("security", "none")
-            
-            # Получаем порт
-            port = server_port or inbound.get("port")
-            if not port:
-                logger.error(f"Порт не найден для Inbound {inbound_id}")
-                return None
-            
-            # Параметры для Reality
-            reality_public_key = None
-            reality_short_id = None
-            sni = None
-            path = None
-            
-            if security == "reality":
-                reality_settings = stream_settings.get("realitySettings", {})
-                reality_inner = reality_settings.get("settings", {})
-                reality_public_key = reality_inner.get("publicKey")
-                sni = reality_inner.get("serverName") or (reality_settings.get("serverNames", [None])[0] if reality_settings.get("serverNames") else None)
-                short_ids = reality_settings.get("shortIds", [])
-                if short_ids:
-                    reality_short_id = short_ids[0]  # Берем первый Short ID
-            
-            # Параметры для gRPC/WebSocket
-            if network == "grpc":
-                grpc_settings = stream_settings.get("grpcSettings", {})
-                path = grpc_settings.get("serviceName")
-            elif network == "ws":
-                ws_settings = stream_settings.get("wsSettings", {})
-                path = ws_settings.get("path")
-            
-            # Генерируем конфиг
-            from core.xray import generate_vless_config
-            
-            return generate_vless_config(
-                user_uuid=uuid,
-                server_host=server_host,
-                server_port=port,
-                server_uuid=uuid,
-                server_flow=client_data.get("flow") or None,
-                server_network=network,
-                server_security=security,
-                server_sni=sni,
-                server_reality_public_key=reality_public_key,
-                server_reality_short_id=reality_short_id,
-                server_path=path,
-                server_host_header=None,
-                remark=inbound.get("remark", "fioreVPN"),
-            )
-        except Exception as e:
-            logger.error(f"Ошибка при получении конфига клиента из 3x-UI: {e}")
-            import traceback
-            logger.error(traceback.format_exc())
             return None
-
+        except Exception as e:
+            logger.error(f"Ошибка при получении конфига клиента: {e}")
+            return None
+    
+    async def get_client_traffic(self, email: str) -> dict[str, Any] | None:
+        """
+        Получить статистику трафика клиента
+        
+        Args:
+            email: Email клиента
+        
+        Returns:
+            Статистика трафика или None
+        """
+        await self._ensure_session()
+        
+        endpoint = f"{self.api_url}/inbounds/getClientTraffics/{email}"
+        
+        try:
+            response = await self._session.get(endpoint)
+            
+            if response.status_code == 200:
+                result = response.json()
+                if result.get("success"):
+                    return result.get("obj")
+            
+            return None
+        except Exception as e:
+            logger.error(f"Ошибка при получении трафика клиента: {e}")
+            return None
