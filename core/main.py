@@ -6946,7 +6946,7 @@ async def _generate_vpn_configs_for_user(user_id: int, session: AsyncSession, ex
         user_uuid = None
         
         # Если сервер использует API 3x-UI - создаем клиента автоматически
-        if server.x3ui_api_url and server.x3ui_username and server.x3ui_password and server.x3ui_inbound_id:
+        if server.x3ui_api_url and server.x3ui_username and server.x3ui_password:
             from core.x3ui_api import X3UIAPI
             from core.xray import generate_uuid
             
@@ -6957,13 +6957,33 @@ async def _generate_vpn_configs_for_user(user_id: int, session: AsyncSession, ex
                     password=server.x3ui_password,
                 )
                 
+                # Определяем ID инбаунда
+                inbound_id = server.x3ui_inbound_id
+                
+                # Если ID не указан или инбаунд не найден, пытаемся найти автоматически
+                if not inbound_id or not await x3ui.get_inbound(inbound_id):
+                    # Пытаемся найти инбаунд по порту и протоколу
+                    port = server.xray_port or 443
+                    protocol = "vless"  # По умолчанию VLESS
+                    found_inbound = await x3ui.find_inbound_by_port_and_protocol(port, protocol)
+                    
+                    if found_inbound:
+                        inbound_id = found_inbound.get("id")
+                        logger.info(f"Автоматически найден Inbound ID {inbound_id} для сервера {server.name} (порт {port})")
+                        # Сохраняем найденный ID в базу данных
+                        server.x3ui_inbound_id = inbound_id
+                        await session.commit()
+                    else:
+                        logger.warning(f"Не удалось найти Inbound для сервера {server.name} (порт {port}, протокол {protocol})")
+                        continue
+                
                 # Генерируем уникальный email для клиента
                 client_email = f"user_{user_id}_server_{server.id}@fiorevpn"
                 
                 # Создаем клиента в 3x-UI
                 expire_timestamp = int(expires_at.timestamp()) if expires_at else 0
                 client_data = await x3ui.add_client(
-                    inbound_id=server.x3ui_inbound_id,
+                    inbound_id=inbound_id,
                     email=client_email,
                     uuid=None,  # Автоматическая генерация
                     flow=server.xray_flow or "",
@@ -6980,7 +7000,7 @@ async def _generate_vpn_configs_for_user(user_id: int, session: AsyncSession, ex
                     
                     # Получаем конфиг через API (параметры берутся из Inbound автоматически)
                     config_text = await x3ui.get_client_config(
-                        inbound_id=server.x3ui_inbound_id,
+                        inbound_id=inbound_id,
                         email=client_email,
                         server_host=server.host,
                         server_port=server.xray_port,  # Если None, берется из Inbound

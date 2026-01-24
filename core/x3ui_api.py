@@ -81,6 +81,47 @@ class X3UIAPI:
             logger.error(f"Ошибка авторизации в 3x-UI: {e}")
             return False
     
+    async def list_inbounds(self) -> list[dict[str, Any]]:
+        """
+        Получить список всех Inbounds
+        
+        Returns:
+            Список Inbounds или пустой список при ошибке
+        """
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                response = await client.get(
+                    f"{self.api_url}/inbounds/list",
+                    headers=self._get_auth_headers(),
+                )
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    if data.get("success") and "obj" in data:
+                        return data["obj"]
+                
+                return []
+        except Exception as e:
+            logger.error(f"Ошибка при получении списка Inbounds из 3x-UI: {e}")
+            return []
+    
+    async def find_inbound_by_port_and_protocol(self, port: int, protocol: str = "vless") -> dict[str, Any] | None:
+        """
+        Найти Inbound по порту и протоколу
+        
+        Args:
+            port: Порт Inbound
+            protocol: Протокол (vless, vmess, trojan и т.д.)
+        
+        Returns:
+            Данные Inbound или None если не найден
+        """
+        inbounds = await self.list_inbounds()
+        for inbound in inbounds:
+            if inbound.get("port") == port and inbound.get("protocol", "").lower() == protocol.lower():
+                return inbound
+        return None
+    
     async def get_inbound(self, inbound_id: int) -> dict[str, Any] | None:
         """
         Получить информацию о Inbound
@@ -92,22 +133,13 @@ class X3UIAPI:
             Данные Inbound или None при ошибке
         """
         try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                # Получаем список всех Inbounds
-                response = await client.get(
-                    f"{self.api_url}/inbounds/list",
-                    headers=self._get_auth_headers(),
-                )
-                
-                if response.status_code == 200:
-                    data = response.json()
-                    if data.get("success") and "obj" in data:
-                        # Ищем нужный Inbound по ID
-                        for inbound in data["obj"]:
-                            if inbound.get("id") == inbound_id:
-                                return inbound
-                
-                return None
+            inbounds = await self.list_inbounds()
+            # Ищем нужный Inbound по ID
+            for inbound in inbounds:
+                if inbound.get("id") == inbound_id:
+                    return inbound
+            
+            return None
         except Exception as e:
             logger.error(f"Ошибка при получении Inbound из 3x-UI: {e}")
             return None
