@@ -154,6 +154,7 @@ class VpnCredential(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False)
     server_id: Mapped[int] = mapped_column(ForeignKey("servers.id", ondelete="SET NULL"))
+    user_uuid: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)  # UUID пользователя для VLESS
     public_key: Mapped[str | None] = mapped_column(String(255))
     private_key: Mapped[str | None] = mapped_column(String(255))
     config_text: Mapped[str | None] = mapped_column(Text())

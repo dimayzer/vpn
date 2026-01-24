@@ -659,6 +659,15 @@ async def lifespan(app: FastAPI):
             exists = result.scalar()
             if not exists:
                 await conn.execute(text("ALTER TABLE server_status ADD COLUMN connection_speed_mbps NUMERIC(10, 2)"))
+            
+            # Миграция: добавление поля user_uuid в vpn_credentials
+            try:
+                await conn.execute(text("ALTER TABLE vpn_credentials ADD COLUMN user_uuid VARCHAR(36)"))
+                await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_vpn_credentials_user_uuid ON vpn_credentials(user_uuid)"))
+                logger.info("Added user_uuid column to vpn_credentials table")
+            except Exception as e:
+                if "already exists" not in str(e).lower() and "duplicate" not in str(e).lower():
+                    logger.warning(f"Could not add user_uuid column (might already exist): {e}")
                 import logging
                 logging.info("Added connection_speed_mbps column to server_status table")
         except Exception as e:
@@ -7001,14 +7010,34 @@ async def _generate_vpn_config_for_user_server(user_id: int, server_id: int, ses
             # Генерируем уникальный email для клиента
             client_email = f"user_{user_id}_server_{server.id}@fiorevpn"
             
+            # Получаем настройки лимитов из SystemSetting
+            limit_ip_setting = await session.scalar(select(SystemSetting).where(SystemSetting.key == "vpn_limit_ip"))
+            total_gb_setting = await session.scalar(select(SystemSetting).where(SystemSetting.key == "vpn_traffic_limit_gb"))
+            
+            limit_ip = 1  # По умолчанию 1 IP
+            if limit_ip_setting:
+                try:
+                    limit_ip = int(limit_ip_setting.value)
+                except (ValueError, TypeError):
+                    limit_ip = 1
+            
+            total_gb = 0  # По умолчанию без ограничений (0 = unlimited)
+            if total_gb_setting:
+                try:
+                    total_gb = int(total_gb_setting.value)
+                except (ValueError, TypeError):
+                    total_gb = 0
+            
             # Создаем клиента в 3x-UI
-            expire_timestamp = int(expires_at.timestamp()) if expires_at else 0
+            expire_timestamp = int(expires_at.timestamp() * 1000) if expires_at else 0  # 3x-UI использует миллисекунды
             client_data = await x3ui.add_client(
                 inbound_id=inbound_id,
                 email=client_email,
                 uuid=None,  # Автоматическая генерация
                 flow=server.xray_flow or "",
                 expire=expire_timestamp,
+                limit_ip=limit_ip,
+                total_gb=total_gb,
             )
             
             if client_data:
@@ -7044,6 +7073,11 @@ async def _generate_vpn_config_for_user_server(user_id: int, server_id: int, ses
             if error_msg == "INBOUND_NOT_FOUND_FALLBACK_TO_UUID" and server.xray_uuid:
                 logger.info(f"Переходим на fallback с UUID для сервера {server.name}")
                 # Не устанавливаем config_text и user_uuid, чтобы код перешел к elif server.xray_uuid
+                config_text = None
+                user_uuid = None
+            elif "Inbound не найден" in error_msg and server.xray_uuid:
+                # Если Inbound не найден, но есть UUID, используем fallback
+                logger.info(f"Переходим на fallback с UUID для сервера {server.name} (Inbound не найден)")
                 config_text = None
                 user_uuid = None
             else:
@@ -7097,11 +7131,14 @@ async def _generate_vpn_config_for_user_server(user_id: int, server_id: int, ses
         # Обновляем существующий конфиг
         existing.expires_at = expires_at
         existing.config_text = config_text
+        if user_uuid:
+            existing.user_uuid = user_uuid
     else:
         # Создаем новый конфиг
         credential = VpnCredential(
             user_id=user_id,
             server_id=server.id,
+            user_uuid=user_uuid,
             config_text=config_text,
             active=True,
             expires_at=expires_at,
@@ -7586,7 +7623,18 @@ async def generate_user_vpn_key(
         old_cred.active = False
     
     # Генерируем новый ключ
-    await _generate_vpn_config_for_user_server(user.id, user.selected_server_id, session, user.subscription_ends_at)
+    try:
+        await _generate_vpn_config_for_user_server(user.id, user.selected_server_id, session, user.subscription_ends_at)
+    except ValueError as e:
+        # Если не удалось сгенерировать конфиг (например, Inbound не найден), возвращаем понятную ошибку
+        error_msg = str(e)
+        if "Inbound не найден" in error_msg or "не настроен" in error_msg or "не удалось" in error_msg:
+            raise HTTPException(status_code=400, detail=f"server_configuration_error: {error_msg}")
+        raise HTTPException(status_code=500, detail=f"key_generation_failed: {error_msg}")
+    except Exception as e:
+        import logging
+        logging.error(f"Ошибка при генерации ключа для пользователя {user.tg_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="key_generation_failed")
     
     # Получаем созданный ключ
     credential = await session.scalar(
