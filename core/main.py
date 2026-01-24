@@ -7484,12 +7484,16 @@ async def _generate_vpn_config_for_user_server(user_id: int, server_id: int, ses
             client_email = f"tg_{user.tg_id}_server_{server.id}@fiorevpn"
             
             # ВАЖНО: Удаляем существующего клиента перед созданием нового (для regenerate и duplicate email)
+            # Игнорируем ошибки, так как клиент может не существовать (например, при первой генерации)
             try:
                 deleted = await x3ui.delete_client(inbound_id, client_email)
                 if deleted:
                     logger.info(f"Удален существующий клиент {client_email} из Inbound {inbound_id}")
+                else:
+                    logger.debug(f"Клиент {client_email} не найден в Inbound {inbound_id} (это нормально для новой генерации)")
             except Exception as del_err:
-                logger.warning(f"Не удалось удалить клиента {client_email}: {del_err}")
+                # Не критичная ошибка - клиент может не существовать
+                logger.debug(f"Не удалось удалить клиента {client_email} (возможно, его нет): {del_err}")
             
             # Получаем настройки лимитов из SystemSetting
             limit_ip_setting = await session.scalar(select(SystemSetting).where(SystemSetting.key == "vpn_limit_ip"))
@@ -8102,27 +8106,51 @@ async def select_server_for_user(
     old_server_id = user.selected_server_id
     
     # Если меняем сервер — удаляем клиента со старого сервера
+    # ВАЖНО: Это не должно блокировать смену сервера, поэтому все ошибки логируются, но не прерывают процесс
     if old_server_id and old_server_id != server_id:
         old_server = await session.get(Server, old_server_id)
         if old_server and old_server.x3ui_api_url and old_server.x3ui_username and old_server.x3ui_password:
             try:
                 from core.x3ui_api import X3UIAPI
-                x3ui = X3UIAPI(
-                    api_url=old_server.x3ui_api_url,
-                    username=old_server.x3ui_username,
-                    password=old_server.x3ui_password,
-                )
-                try:
-                    client_email = f"tg_{user.tg_id}_server_{old_server.id}@fiorevpn"
-                    inbound_id = old_server.x3ui_inbound_id
-                    if inbound_id:
-                        deleted = await x3ui.delete_client(inbound_id, client_email)
-                        if deleted:
-                            logger.info(f"Удален клиент {client_email} со старого сервера {old_server.name}")
-                finally:
-                    await x3ui.close()
+                import asyncio
+                
+                # Устанавливаем таймаут для удаления клиента со старого сервера (5 секунд)
+                async def delete_old_client():
+                    x3ui = None
+                    try:
+                        x3ui = X3UIAPI(
+                            api_url=old_server.x3ui_api_url,
+                            username=old_server.x3ui_username,
+                            password=old_server.x3ui_password,
+                        )
+                        client_email = f"tg_{user.tg_id}_server_{old_server.id}@fiorevpn"
+                        inbound_id = old_server.x3ui_inbound_id
+                        if inbound_id:
+                            # Пытаемся удалить с таймаутом
+                            deleted = await asyncio.wait_for(
+                                x3ui.delete_client(inbound_id, client_email),
+                                timeout=5.0
+                            )
+                            if deleted:
+                                logger.info(f"Удален клиент {client_email} со старого сервера {old_server.name}")
+                            else:
+                                logger.info(f"Клиент {client_email} не найден на старом сервере {old_server.name} (возможно, уже удален)")
+                    except asyncio.TimeoutError:
+                        logger.warning(f"Таймаут при удалении клиента со старого сервера {old_server.name}")
+                    except Exception as e:
+                        logger.warning(f"Не удалось удалить клиента со старого сервера {old_server.name}: {e}")
+                    finally:
+                        if x3ui:
+                            try:
+                                await x3ui.close()
+                            except:
+                                pass
+                
+                # Запускаем удаление в фоне, не блокируя смену сервера
+                asyncio.create_task(delete_old_client())
+                logger.info(f"Запущена фоновая задача удаления клиента со старого сервера {old_server.name}")
             except Exception as e:
-                logger.warning(f"Не удалось удалить клиента со старого сервера {old_server.name}: {e}")
+                logger.warning(f"Ошибка при инициализации удаления клиента со старого сервера {old_server.name}: {e}")
         
         # Деактивируем старые VPN credentials для старого сервера
         old_credentials = await session.scalars(
