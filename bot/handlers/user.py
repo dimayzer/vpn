@@ -1726,6 +1726,7 @@ async def generate_key_handler(callback: CallbackQuery) -> None:
                 )
             else:
                 await callback.answer("❌ Ошибка при генерации ключа. Попробуйте позже.", show_alert=True)
+            return  # Важно: возвращаемся, чтобы не доходить до кода ниже
         except Exception as e:
             import logging
             error_msg = str(e)

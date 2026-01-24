@@ -7661,9 +7661,16 @@ async def get_user_vpn_key(
 @app.post("/users/{tg_id}/vpn-key/generate")
 async def generate_user_vpn_key(
     tg_id: int,
+    request: Request,
     session: AsyncSession = Depends(get_session),
 ):
     """Сгенерировать VPN ключ для пользователя"""
+    # Получаем payload из запроса
+    try:
+        payload = await request.json() if request.headers.get("content-type") == "application/json" else {}
+    except:
+        payload = {}
+    
     user = await session.scalar(select(User).where(User.tg_id == tg_id))
     if not user:
         raise HTTPException(status_code=404, detail="user_not_found")
@@ -7694,7 +7701,7 @@ async def generate_user_vpn_key(
     )
     
     # Проверяем параметр regenerate (для "Сменить ключ")
-    regenerate = payload and payload.get("regenerate", False) if payload else False
+    regenerate = payload.get("regenerate", False) if payload else False
     
     # Если пользователь уже имеет активный ключ и не запрошена регенерация, возвращаем 400
     if existing_active and existing_active.config_text and not regenerate:
