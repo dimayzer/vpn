@@ -1206,8 +1206,16 @@ def _require_csrf(request: Request) -> None:
 
 @app.exception_handler(StarletteHTTPException)
 async def starlette_http_exception_handler(request: Request, exc: StarletteHTTPException):
-    """Обработка HTTP исключений от Starlette (включая 404)"""
+    """Обработка HTTP исключений от Starlette (включая 404 и 405)"""
     import logging
+    # Для 405 (Method Not Allowed) - тихо возвращаем ответ без логирования ошибки
+    # Это обычно сканирование портов или атаки извне
+    if exc.status_code == 405:
+        return JSONResponse(
+            status_code=405,
+            content={"detail": "Method Not Allowed"}
+        )
+    
     # Для 404 ошибок
     if exc.status_code == 404:
         path = request.url.path
@@ -1248,8 +1256,9 @@ async def starlette_http_exception_handler(request: Request, exc: StarletteHTTPE
             status_code=404
         )
     
-    # Для других HTTP ошибок от Starlette пробрасываем дальше
-    raise exc
+    # Для других HTTP ошибок от Starlette пробрасываем дальше (кроме 405, который уже обработан)
+    if exc.status_code != 405:
+        raise exc
 
 
 @app.exception_handler(HTTPException)
@@ -1264,6 +1273,15 @@ async def http_exception_handler(request: Request, exc: HTTPException):
             status_code=403,
             content={"detail": exc.detail}
         )
+    
+    # Для 405 (Method Not Allowed) - тихо возвращаем ответ без логирования ошибки
+    if exc.status_code == 405:
+        # Это обычно сканирование портов или атаки, не логируем как ошибку
+        return JSONResponse(
+            status_code=405,
+            content={"detail": "Method Not Allowed"}
+        )
+    
     # Для всех остальных HTTPException возвращаем JSON для API endpoints
     if request.url.path.startswith("/api/") or request.url.path.startswith("/subscriptions/") or request.url.path.startswith("/payments/") or request.url.path.startswith("/users/"):
         return JSONResponse(
