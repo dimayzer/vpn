@@ -557,6 +557,22 @@ async def lifespan(app: FastAPI):
             import logging
             logging.warning(f"Could not add subscription_ends_at column (may already exist): {e}")
         
+        # Добавляем колонку selected_server_id, если её нет
+        try:
+            result = await conn.execute(
+                text("SELECT column_name FROM information_schema.columns WHERE table_name='users' AND column_name='selected_server_id'")
+            )
+            exists = result.scalar()
+            if not exists:
+                await conn.execute(text("ALTER TABLE users ADD COLUMN selected_server_id INTEGER"))
+                await conn.execute(text("ALTER TABLE users ADD CONSTRAINT fk_users_selected_server_id FOREIGN KEY (selected_server_id) REFERENCES servers(id) ON DELETE SET NULL"))
+                await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_users_selected_server_id ON users(selected_server_id)"))
+                import logging
+                logging.info("Added selected_server_id column to users table")
+        except Exception as e:
+            import logging
+            logging.warning(f"Could not add selected_server_id column (may already exist): {e}")
+        
         # Добавляем новое значение в enum auditlogaction, если его еще нет
         try:
             # Проверяем, существует ли уже значение backup_action
