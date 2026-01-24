@@ -7,8 +7,6 @@ RUN apt-get update && \
     apt-get install -y --no-install-recommends \
     postgresql-client \
     curl \
-    autossh \
-    openssh-client \
     && rm -rf /var/lib/apt/lists/*
 
 # Копирование requirements и установка зависимостей
