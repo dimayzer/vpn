@@ -1681,12 +1681,32 @@ async def generate_key_handler(callback: CallbackQuery) -> None:
         api = CoreApi(str(settings.core_api_base), admin_token=settings.admin_token or "")
         
         # Генерируем ключ
-        result = await api.generate_vpn_key(callback.from_user.id)
-        vpn_key = result.get("key")
-        server_name = result.get("server_name", "Сервер")
-        
-        if not vpn_key:
-            await callback.answer("❌ Не удалось сгенерировать ключ", show_alert=True)
+        try:
+            result = await api.generate_vpn_key(callback.from_user.id)
+            vpn_key = result.get("key")
+            server_name = result.get("server_name", "Сервер")
+            
+            if not vpn_key:
+                await callback.answer("❌ Не удалось сгенерировать ключ", show_alert=True)
+                return
+        except Exception as e:
+            import logging
+            error_msg = str(e)
+            logging.error(f"Ошибка при генерации ключа: {e}", exc_info=True)
+            
+            # Понятные сообщения об ошибках
+            if "Inbound не найден" in error_msg or "server_configuration_error" in error_msg:
+                await callback.answer(
+                    "❌ Ошибка конфигурации сервера. Обратитесь в поддержку.",
+                    show_alert=True
+                )
+            elif "rate_limit_exceeded" in error_msg:
+                await callback.answer(
+                    "❌ Превышен лимит генерации ключей. Попробуйте позже.",
+                    show_alert=True
+                )
+            else:
+                await callback.answer("❌ Ошибка при генерации ключа. Попробуйте позже.", show_alert=True)
             return
         
         # Обновляем сообщение

@@ -122,6 +122,19 @@ class X3UIAPI:
                 return inbound
         return None
     
+    async def find_first_vless_inbound(self) -> dict[str, Any] | None:
+        """
+        Найти первый доступный VLESS Inbound (если поиск по порту не дал результата)
+        
+        Returns:
+            Данные первого VLESS Inbound или None если не найден
+        """
+        inbounds = await self.list_inbounds()
+        for inbound in inbounds:
+            if inbound.get("protocol", "").lower() == "vless":
+                return inbound
+        return None
+    
     async def get_inbound(self, inbound_id: int) -> dict[str, Any] | None:
         """
         Получить информацию о Inbound

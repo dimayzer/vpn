@@ -6999,13 +6999,33 @@ async def _generate_vpn_config_for_user_server(user_id: int, server_id: int, ses
                     server.x3ui_inbound_id = inbound_id
                     await session.commit()
                 else:
-                    logger.warning(f"Не удалось найти Inbound для сервера {server.name} (порт {port}, протокол {protocol})")
-                    # Если не найден Inbound, но есть UUID, используем fallback
-                    if server.xray_uuid:
-                        logger.info(f"Используем fallback на UUID для сервера {server.name} (Inbound не найден)")
-                        raise ValueError("INBOUND_NOT_FOUND_FALLBACK_TO_UUID")
+                    # Если не найден по порту, пробуем найти любой VLESS Inbound
+                    logger.warning(f"Не удалось найти Inbound для сервера {server.name} по порту {port}, ищем любой VLESS Inbound")
+                    # Логируем все доступные Inbounds для отладки
+                    all_inbounds = await x3ui.list_inbounds()
+                    if all_inbounds:
+                        logger.info(f"Доступные Inbounds в 3x-UI: {[(inb.get('id'), inb.get('port'), inb.get('protocol'), inb.get('remark', '')) for inb in all_inbounds]}")
+                    found_inbound = await x3ui.find_first_vless_inbound()
+                    
+                    if found_inbound:
+                        inbound_id = found_inbound.get("id")
+                        inbound_port = found_inbound.get("port", "неизвестен")
+                        logger.info(f"Найден VLESS Inbound ID {inbound_id} (порт {inbound_port}) для сервера {server.name}")
+                        # Сохраняем найденный ID в базу данных
+                        server.x3ui_inbound_id = inbound_id
+                        # Обновляем порт сервера, если он отличается
+                        if inbound_port != "неизвестен" and server.xray_port != inbound_port:
+                            logger.info(f"Обновляем порт сервера {server.name} с {server.xray_port} на {inbound_port}")
+                            server.xray_port = inbound_port
+                        await session.commit()
                     else:
-                        raise ValueError(f"Inbound не найден для сервера {server.name}")
+                        logger.warning(f"Не удалось найти ни одного VLESS Inbound для сервера {server.name}")
+                        # Если не найден Inbound, но есть UUID, используем fallback
+                        if server.xray_uuid:
+                            logger.info(f"Используем fallback на UUID для сервера {server.name} (Inbound не найден)")
+                            raise ValueError("INBOUND_NOT_FOUND_FALLBACK_TO_UUID")
+                        else:
+                            raise ValueError(f"Inbound не найден для сервера {server.name}. Убедитесь, что в 3x-UI создан VLESS Inbound и указан правильный Inbound ID в настройках сервера.")
             
             # Генерируем уникальный email для клиента
             client_email = f"user_{user_id}_server_{server.id}@fiorevpn"
