@@ -6963,6 +6963,9 @@ async def _generate_vpn_config_for_user_server(user_id: int, server_id: int, ses
         from core.x3ui_api import X3UIAPI
         from core.xray import generate_uuid
         
+        config_text = None
+        user_uuid = None
+        
         try:
             x3ui = X3UIAPI(
                 api_url=server.x3ui_api_url,
@@ -6988,7 +6991,12 @@ async def _generate_vpn_config_for_user_server(user_id: int, server_id: int, ses
                     await session.commit()
                 else:
                     logger.warning(f"Не удалось найти Inbound для сервера {server.name} (порт {port}, протокол {protocol})")
-                    raise ValueError(f"Inbound не найден для сервера {server.name}")
+                    # Если не найден Inbound, но есть UUID, используем fallback
+                    if server.xray_uuid:
+                        logger.info(f"Используем fallback на UUID для сервера {server.name} (Inbound не найден)")
+                        raise ValueError("INBOUND_NOT_FOUND_FALLBACK_TO_UUID")
+                    else:
+                        raise ValueError(f"Inbound не найден для сервера {server.name}")
             
             # Генерируем уникальный email для клиента
             client_email = f"user_{user_id}_server_{server.id}@fiorevpn"
@@ -7025,13 +7033,43 @@ async def _generate_vpn_config_for_user_server(user_id: int, server_id: int, ses
             else:
                 # Клиент не был создан (инбаунд не найден или другая ошибка)
                 logger.warning(f"Не удалось создать клиента через API 3x-UI для сервера {server.name} (ID: {server.id}, Inbound ID: {server.x3ui_inbound_id})")
+                # Если есть UUID, используем fallback
+                if server.xray_uuid:
+                    logger.info(f"Используем fallback на UUID для сервера {server.name} (клиент не создан)")
+                    raise ValueError("INBOUND_NOT_FOUND_FALLBACK_TO_UUID")
                 raise ValueError(f"Не удалось создать клиента на сервере {server.name}")
+        except ValueError as e:
+            error_msg = str(e)
+            # Если это специальный сигнал для fallback на UUID
+            if error_msg == "INBOUND_NOT_FOUND_FALLBACK_TO_UUID" and server.xray_uuid:
+                logger.info(f"Переходим на fallback с UUID для сервера {server.name}")
+                # Не устанавливаем config_text и user_uuid, чтобы код перешел к elif server.xray_uuid
+                config_text = None
+                user_uuid = None
+            else:
+                logger.warning(f"Ошибка при создании клиента через API 3x-UI для сервера {server.name}: {e}")
+                raise
         except Exception as e:
             logger.warning(f"Ошибка при создании клиента через API 3x-UI для сервера {server.name}: {e}")
-            raise
+            # Если есть UUID, пытаемся использовать fallback
+            if server.xray_uuid:
+                logger.info(f"Используем fallback на UUID для сервера {server.name} после ошибки API")
+                config_text = None
+                user_uuid = None
+            else:
+                raise
+        
+        # Если конфиг не был создан через API, но есть UUID, используем fallback
+        if not config_text or not user_uuid:
+            if server.xray_uuid:
+                logger.info(f"Используем fallback на UUID для сервера {server.name}")
+                # Переходим к генерации через UUID
+                pass
+            else:
+                raise ValueError(f"Не удалось сгенерировать конфиг для сервера {server.name}")
     
-    # Если API 3x-UI не настроен, используем старый способ с UUID
-    elif server.xray_uuid:
+    # Если API 3x-UI не настроен или не удалось создать через API, используем старый способ с UUID
+    if (not config_text or not user_uuid) and server.xray_uuid:
         user_uuid = server.xray_uuid
         config_text = generate_vless_config(
             user_uuid=user_uuid,
@@ -7048,7 +7086,7 @@ async def _generate_vpn_config_for_user_server(user_id: int, server_id: int, ses
             server_host_header=server.xray_host,
             remark=f"{server.name}",
         )
-    else:
+    elif not config_text or not user_uuid:
         # Пропускаем серверы без настроек
         raise ValueError(f"Сервер {server.name} не настроен (нет API 3x-UI и UUID)")
         
