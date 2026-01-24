@@ -4705,6 +4705,13 @@ async def admin_web_user_detail(
             "updated_at": fmt(t.updated_at),
         })
 
+    # Получаем информацию о выбранном сервере
+    selected_server_name = None
+    if user.selected_server_id:
+        selected_server = await session.get(Server, user.selected_server_id)
+        if selected_server:
+            selected_server_name = selected_server.name
+    
     user_data = {
         "id": user.id,
         "tg_id": user.tg_id,
@@ -4717,6 +4724,7 @@ async def admin_web_user_detail(
         "is_active": user.is_active,
         "has_active_subscription": user.has_active_subscription,
         "subscription_ends_at": fmt(user.subscription_ends_at) if user.subscription_ends_at else "—",
+        "selected_server_name": selected_server_name or "—",
         "balance": balance_rub,
         "referral_code": user.referral_code or "—",
         "referred_by_tg_id": user.referred_by.tg_id if user.referred_by else None,

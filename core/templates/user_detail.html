@@ -288,6 +288,12 @@
                     <div class="value">{{ user.subscription_ends_at }} МСК</div>
                 </div>
                 {% endif %}
+                {% if user.selected_server_name and user.selected_server_name != "—" %}
+                <div class="card">
+                    <div class="label">Выбранный сервер</div>
+                    <div class="value">{{ user.selected_server_name }}</div>
+                </div>
+                {% endif %}
                 <div class="card">
                     <div class="label">Регистрация</div>
                     <div class="value">{{ user.created_at }} МСК</div>

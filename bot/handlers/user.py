@@ -98,6 +98,19 @@ async def status(message: Message) -> None:
             await message.answer("Не могу определить пользователя.")
             return
         data = await api.subscription_status(message.from_user.id)
+        user_data = await api.get_user_by_tg(message.from_user.id)
+        selected_server_id = user_data.get("selected_server_id") if user_data else None
+        selected_server_name = None
+        
+        # Получаем имя выбранного сервера
+        if selected_server_id:
+            servers_response = await api.get_available_servers()
+            servers = servers_response.get("servers", [])
+            for server in servers:
+                if server.get("id") == selected_server_id:
+                    selected_server_name = server.get("name", f"Сервер {selected_server_id}")
+                    break
+        
         if data.get("has_active"):
             plan = data.get("plan_name") or "—"
             ends_at = data.get("ends_at") or "—"
@@ -111,7 +124,11 @@ async def status(message: Message) -> None:
                     ends_str = "—"
             except:
                 ends_str = ends_at[:10] if len(ends_at) >= 10 else ends_at
-            await message.answer(f"Статус подписки: активна ✅\nТариф: {plan}\nДо: {ends_str} МСК")
+            
+            status_text = f"Статус подписки: активна ✅\nТариф: {plan}\nДо: {ends_str} МСК"
+            if selected_server_name:
+                status_text += f"\nСервер: {selected_server_name}"
+            await message.answer(status_text)
         else:
             await message.answer("Статус подписки: нет активной. Используйте кнопку '📦 Тарифы' для покупки подписки.")
     except Exception:
@@ -1426,8 +1443,8 @@ async def servers_btn(message: Message) -> None:
         # Формируем сообщение со списком серверов
         text_lines = ["📡 <b>Доступные серверы</b>\n"]
         
-        # Формируем клавиатуру с кнопками выбора серверов
-        from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
+        # Формируем inline клавиатуру с кнопками выбора серверов
+        from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
         keyboard_buttons = []
         
         for server in servers:
@@ -1456,7 +1473,12 @@ async def servers_btn(message: Message) -> None:
                 button_text += f" ({location})"
             button_text += selected_mark
             
-            keyboard_buttons.append([KeyboardButton(text=button_text)])
+            keyboard_buttons.append([
+                InlineKeyboardButton(
+                    text=button_text,
+                    callback_data=f"select_server_{server_id}_{message.from_user.id}"
+                )
+            ])
             
             # Текст для сообщения
             line = f"{status_emoji} <b>{server_name}</b>"
@@ -1465,11 +1487,7 @@ async def servers_btn(message: Message) -> None:
             line += f"\n   Статус: {status_text}{ping_text}{selected_mark}"
             text_lines.append(line)
         
-        keyboard = ReplyKeyboardMarkup(
-            keyboard=keyboard_buttons,
-            resize_keyboard=True,
-            is_persistent=True
-        )
+        keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
         
         await message.answer(
             "\n".join(text_lines),
@@ -1482,46 +1500,53 @@ async def servers_btn(message: Message) -> None:
         await message.answer("❌ Ошибка при загрузке серверов. Попробуйте позже.")
 
 
-@router.message(F.text.startswith("🟢") | F.text.startswith("🔴"))
-async def select_server_handler(message: Message) -> None:
-    """Обработка выбора сервера по кнопке"""
-    if not message.from_user:
+@router.callback_query(F.data.startswith("select_server_"))
+async def select_server_handler(callback: CallbackQuery) -> None:
+    """Обработка выбора сервера по inline кнопке"""
+    if not callback.from_user:
+        await callback.answer("Ошибка")
+        return
+    
+    parts = callback.data.split("_")
+    server_id = int(parts[2])
+    tg_id = int(parts[3])
+    
+    if callback.from_user.id != tg_id:
+        await callback.answer("Нет доступа", show_alert=True)
         return
     
     try:
         settings = get_settings()
         api = CoreApi(str(settings.core_api_base), admin_token=settings.admin_token or "")
         
-        # Получаем список серверов
+        # Получаем список серверов для получения имени
         servers_response = await api.get_available_servers()
         servers = servers_response.get("servers", [])
         
-        # Находим сервер по тексту кнопки
+        # Находим сервер по ID
         selected_server = None
         for server in servers:
-            server_name = server.get("name", f"Сервер {server.get('id')}")
-            location = server.get("location", "")
-            button_text = f"{'🟢' if server.get('status', {}).get('is_online', False) else '🔴'} {server_name}"
-            if location:
-                button_text += f" ({location})"
-            
-            # Проверяем совпадение (убираем отметку выбранного)
-            message_text = message.text.replace(" ✅", "").strip()
-            if message_text == button_text or message_text.startswith(button_text.split(" (")[0]):
+            if server.get("id") == server_id:
                 selected_server = server
                 break
         
         if not selected_server:
-            await message.answer("❌ Сервер не найден. Попробуйте выбрать из списка.")
+            await callback.answer("❌ Сервер не найден", show_alert=True)
             return
         
-        server_id = selected_server.get("id")
         server_name = selected_server.get("name", f"Сервер {server_id}")
         
         # Устанавливаем выбранный сервер
-        await api.set_selected_server(message.from_user.id, server_id)
+        await api.set_selected_server(callback.from_user.id, server_id)
         
-        await message.answer(
+        # Удаляем сообщение с кнопками
+        try:
+            await callback.message.delete()
+        except Exception:
+            pass
+        
+        await callback.answer("✅ Сервер выбран!", show_alert=True)
+        await callback.message.answer(
             f"✅ Сервер <b>{server_name}</b> выбран!\n\n"
             f"Теперь вы можете сгенерировать ключ в разделе '🔑 Ключ'.",
             parse_mode="HTML"
@@ -1529,7 +1554,7 @@ async def select_server_handler(message: Message) -> None:
     except Exception as e:
         import logging
         logging.error(f"Ошибка при выборе сервера: {e}", exc_info=True)
-        await message.answer("❌ Ошибка при выборе сервера. Попробуйте позже.")
+        await callback.answer("❌ Ошибка при выборе сервера", show_alert=True)
 
 
 @router.message(F.text == BTN_KEY)
