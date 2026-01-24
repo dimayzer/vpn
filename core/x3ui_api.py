@@ -247,6 +247,11 @@ class X3UIAPI:
         """
         Удалить клиента из Inbound
         
+        3x-UI API требует UUID клиента для удаления, поэтому:
+        1. Получаем inbound со списком клиентов
+        2. Находим клиента по email
+        3. Удаляем по UUID
+        
         Args:
             inbound_id: ID Inbound
             email: Email клиента для удаления
@@ -256,11 +261,33 @@ class X3UIAPI:
         """
         await self._ensure_session()
         
-        # URL-кодируем email (@ -> %40)
-        encoded_email = quote(email, safe='')
+        # Сначала находим UUID клиента по email
+        client_uuid = None
+        try:
+            inbound = await self.get_inbound(inbound_id)
+            if inbound:
+                settings_str = inbound.get("settings", "{}")
+                if isinstance(settings_str, str):
+                    import json
+                    settings = json.loads(settings_str)
+                else:
+                    settings = settings_str
+                
+                clients = settings.get("clients", [])
+                for client in clients:
+                    if client.get("email") == email:
+                        client_uuid = client.get("id")
+                        break
+        except Exception as e:
+            logger.warning(f"Ошибка при поиске UUID клиента {email}: {e}")
         
-        endpoint = f"{self.api_url}/inbounds/{inbound_id}/delClient/{encoded_email}"
-        logger.info(f"Удаление клиента: {endpoint}")
+        if not client_uuid:
+            logger.info(f"Клиент {email} не найден в Inbound {inbound_id}, пропускаем удаление")
+            return False
+        
+        # Удаляем по UUID
+        endpoint = f"{self.api_url}/inbounds/{inbound_id}/delClient/{client_uuid}"
+        logger.info(f"Удаление клиента {email} (UUID: {client_uuid}): {endpoint}")
         
         try:
             response = await self._session.post(endpoint)
@@ -268,10 +295,12 @@ class X3UIAPI:
             if response.status_code == 200:
                 result = response.json()
                 if result.get("success"):
-                    logger.info(f"Клиент {email} удален из Inbound {inbound_id}")
+                    logger.info(f"Клиент {email} (UUID: {client_uuid}) удален из Inbound {inbound_id}")
                     return True
                 else:
                     logger.warning(f"Не удалось удалить клиента: {result.get('msg', 'Unknown error')}")
+            else:
+                logger.warning(f"HTTP {response.status_code} при удалении клиента: {response.text}")
             
             return False
         except Exception as e:
