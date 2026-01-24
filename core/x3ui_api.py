@@ -32,54 +32,76 @@ class X3UIAPI:
     
     def _get_auth_headers(self) -> dict[str, str]:
         """Получить заголовки для авторизации"""
-        if not self._token:
-            # Базовая авторизация через base64
+        headers = {}
+        if self._token:
+            headers["Authorization"] = f"Bearer {self._token}"
+        elif not self._cookies:
+            # Базовая авторизация через base64 (fallback)
             credentials = f"{self.username}:{self.password}"
             encoded = base64.b64encode(credentials.encode()).decode()
-            return {"Authorization": f"Basic {encoded}"}
-        return {"Authorization": f"Bearer {self._token}"}
+            headers["Authorization"] = f"Basic {encoded}"
+        return headers
+    
+    def _get_cookies(self) -> dict[str, str] | None:
+        """Получить cookies для авторизации"""
+        return self._cookies
     
     async def login(self) -> bool:
         """
-        Авторизация в API 3x-UI
+        Авторизация в API 3x-UI через /login/ endpoint
+        
+        Согласно документации, сначала нужно сделать POST /login/ с username/password,
+        получить cookie сессии, и дальше использовать эту cookie для API запросов.
         
         Returns:
             True если авторизация успешна, False иначе
         """
         try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                # Попробуем разные варианты API endpoints
-                # 3x-UI обычно использует /login или /auth/login
-                endpoints = [
-                    f"{self.api_url}/login",
-                    f"{self.api_url}/auth/login",
-                    f"{self.api_url}/user/login",
-                ]
+            # Получаем базовый URL без /panel/api для логина
+            # Логин обычно находится на уровне панели, не API
+            base_url = self.api_url.replace("/panel/api", "")
+            login_endpoint = f"{base_url}/login"
+            
+            async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
+                # Пробуем логин через form-data (как обычно в веб-формах)
+                response = await client.post(
+                    login_endpoint,
+                    data={
+                        "username": self.username,
+                        "password": self.password
+                    },
+                    headers={"Content-Type": "application/x-www-form-urlencoded"},
+                )
                 
-                for endpoint in endpoints:
+                if response.status_code == 200:
+                    # Проверяем, есть ли cookie сессии
+                    cookies = response.cookies
+                    if cookies:
+                        # Сохраняем cookies для последующих запросов
+                        self._cookies = dict(cookies)
+                        logger.info(f"Успешная авторизация в 3x-UI через cookie (API URL: {self.api_url})")
+                        return True
+                    
+                    # Проверяем, есть ли токен в ответе
                     try:
-                        response = await client.post(
-                            endpoint,
-                            json={"username": self.username, "password": self.password},
-                            headers={"Content-Type": "application/json"},
-                        )
-                        if response.status_code == 200:
-                            data = response.json()
-                            if "token" in data:
-                                self._token = data["token"]
-                                return True
-                            elif "access_token" in data:
-                                self._token = data["access_token"]
-                                return True
-                    except Exception:
-                        continue
+                        data = response.json()
+                        if "token" in data:
+                            self._token = data["token"]
+                            logger.info(f"Успешная авторизация в 3x-UI через токен (API URL: {self.api_url})")
+                            return True
+                        elif "access_token" in data:
+                            self._token = data["access_token"]
+                            logger.info(f"Успешная авторизация в 3x-UI через access_token (API URL: {self.api_url})")
+                            return True
+                    except:
+                        pass
                 
-                # Если не получилось через JSON, пробуем Basic Auth
-                # Многие версии 3x-UI используют Basic Auth напрямую
+                # Если не получилось через cookie/token, используем Basic Auth
+                logger.info(f"Используем Basic Auth для 3x-UI (API URL: {self.api_url})")
                 return True  # Basic Auth будет использоваться в заголовках
         except Exception as e:
-            logger.error(f"Ошибка авторизации в 3x-UI: {e}")
-            return False
+            logger.warning(f"Ошибка авторизации в 3x-UI (API URL: {self.api_url}): {e}. Используем Basic Auth.")
+            return True  # Fallback на Basic Auth
     
     async def list_inbounds(self) -> list[dict[str, Any]]:
         """
@@ -195,102 +217,67 @@ class X3UIAPI:
             logger.info(f"Попытка создать клиента через 3x-UI API: URL={self.api_url}, inbound_id={inbound_id}, email={email}, uuid={uuid}")
             logger.debug(f"Добавление клиента: inbound_id={inbound_id}, email={email}, uuid={uuid}, api_url={self.api_url}")
             
-            # Пробуем разные форматы payload и endpoints (согласно документации и примеру ChatGPT)
+            # Согласно официальной документации 3x-UI API:
+            # POST /panel/api/inbounds/addClient (БЕЗ /inbounds/{id}/ перед addClient)
+            # Используется form-data формат
             async with httpx.AsyncClient(timeout=10.0) as http_client:
-                # Вариант 1: Формат из документации 3x-UI API
-                endpoints_v1 = [
-                    f"{self.api_url}/inbounds/{inbound_id}/addClient",  # С inbound_id в пути
-                    f"{self.api_url}/inbounds/addClient",  # Без inbound_id в пути
-                ]
+                # Правильный endpoint согласно документации
+                endpoint = f"{self.api_url}/inbounds/addClient"
                 
-                payload_v1 = {
-                    "id": inbound_id,
-                    "client": {
-                        "email": email,
+                # Формат settings согласно документации (JSON строка в form-data)
+                settings_json = json.dumps({
+                    "clients": [{
                         "id": uuid,
-                        "flow": flow,
-                        "expiryTime": expire,
+                        "email": email,
                         "limitIp": limit_ip,
                         "totalGB": 0,  # Без ограничений трафика
+                        "expiryTime": expire,
                         "enable": True,
-                    }
+                        "flow": flow if flow else ""
+                    }]
+                })
+                
+                # Form-data согласно документации
+                form_data = {
+                    "id": str(inbound_id),
+                    "settings": settings_json
                 }
                 
-                for endpoint in endpoints_v1:
-                    try:
-                        response = await http_client.post(
-                            endpoint,
-                            json=payload_v1,
-                            headers=self._get_auth_headers(),
-                        )
-                        logger.debug(f"Ответ от {endpoint}: статус {response.status_code}, тело: {response.text[:200]}")
-                        if response.status_code == 200:
-                            result = response.json()
-                            if result.get("success"):
-                                logger.info(f"Клиент {email} успешно добавлен в Inbound {inbound_id} с UUID {uuid}")
-                                return {
-                                    "id": uuid,
-                                    "uuid": uuid,
-                                    "email": email,
-                                }
-                            else:
-                                logger.warning(f"API вернул success=false для {endpoint}: {result}")
+                try:
+                    # Используем cookies если есть, иначе заголовки авторизации
+                    cookies = self._get_cookies()
+                    response = await http_client.post(
+                        endpoint,
+                        data=form_data,  # Используем data= для form-data, не json=
+                        headers=self._get_auth_headers(),
+                        cookies=cookies if cookies else None,
+                    )
+                    logger.debug(f"Ответ от {endpoint}: статус {response.status_code}, тело: {response.text[:200]}")
+                    
+                    if response.status_code == 200:
+                        result = response.json()
+                        if result.get("success"):
+                            logger.info(f"Клиент {email} успешно добавлен в Inbound {inbound_id} с UUID {uuid}")
+                            return {
+                                "id": uuid,
+                                "uuid": uuid,
+                                "email": email,
+                            }
                         else:
-                            logger.warning(f"HTTP {response.status_code} от {endpoint} (API URL: {self.api_url}): {response.text[:200]}")
-                    except Exception as e:
-                        logger.debug(f"Ошибка при вызове {endpoint}: {e}")
-                        continue
-                
-                # Вариант 2: Формат из примера ChatGPT (settings как JSON строка)
-                payload_v2 = {
-                    "id": inbound_id,
-                    "settings": json.dumps({
-                        "clients": [{
-                            "id": uuid,
-                            "email": email,
-                            "enable": True,
-                            "expiryTime": expire,
-                            "limitIp": limit_ip,
-                            "flow": flow
-                        }]
-                    })
-                }
-                
-                for endpoint in endpoints_v1:
-                    try:
-                        response = await http_client.post(
-                            endpoint,
-                            json=payload_v2,
-                            headers=self._get_auth_headers(),
-                        )
-                        last_response = response
-                        logger.debug(f"Ответ от {endpoint} (вариант 2): статус {response.status_code}, тело: {response.text[:200]}")
-                        if response.status_code == 200:
-                            result = response.json()
-                            if result.get("success"):
-                                logger.info(f"Клиент {email} успешно добавлен в Inbound {inbound_id} с UUID {uuid} (вариант 2)")
-                                return {
-                                    "id": uuid,
-                                    "uuid": uuid,
-                                    "email": email,
-                                }
-                            else:
-                                logger.warning(f"API вернул success=false для {endpoint} (вариант 2): {result}")
-                        else:
-                            logger.warning(f"HTTP {response.status_code} от {endpoint} (вариант 2, API URL: {self.api_url}): {response.text[:200]}")
-                    except httpx.HTTPStatusError as e:
-                        last_exception = e
-                        last_response = e.response
-                        logger.debug(f"HTTP ошибка при вызове {endpoint} (вариант 2): {e}")
-                        continue
-                    except httpx.RequestError as e:
-                        last_exception = e
-                        logger.debug(f"Сетевая ошибка при вызове {endpoint} (вариант 2): {e}")
-                        continue
-                    except Exception as e:
-                        last_exception = e
-                        logger.debug(f"Ошибка при вызове {endpoint} (вариант 2): {e}")
-                        continue
+                            logger.warning(f"API вернул success=false для {endpoint}: {result}")
+                            raise ValueError(f"API вернул success=false: {result.get('msg', 'Unknown error')}")
+                    else:
+                        logger.warning(f"HTTP {response.status_code} от {endpoint} (API URL: {self.api_url}): {response.text[:200]}")
+                        response.raise_for_status()
+                except httpx.HTTPStatusError as e:
+                    logger.error(f"HTTP ошибка при добавлении клиента в 3x-UI (API URL: {self.api_url}, Inbound ID: {inbound_id}): {e}")
+                    raise
+                except httpx.RequestError as e:
+                    logger.error(f"Сетевая ошибка при добавлении клиента в 3x-UI (API URL: {self.api_url}, Inbound ID: {inbound_id}): {e}")
+                    raise
+                except Exception as e:
+                    logger.error(f"Ошибка при добавлении клиента в 3x-UI (API URL: {self.api_url}, Inbound ID: {inbound_id}): {e}", exc_info=True)
+                    raise
                 
                 # Если ничего не сработало, пробрасываем последнюю ошибку для правильной обработки
                 if last_exception:
@@ -299,6 +286,7 @@ class X3UIAPI:
                     last_response.raise_for_status()
                 
                 # Если дошли сюда, значит все попытки не удались без ошибок
+                # (все ответы были 200, но success=false, или вообще не было ответов)
                 logger.error(
                     f"Не удалось добавить клиента в Inbound {inbound_id}. "
                     f"API URL: {self.api_url}, "
