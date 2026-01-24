@@ -859,6 +859,7 @@ if os.path.exists("core/static"):
 
 # Обработчики для стандартных запросов (чтобы не было 404 в логах)
 @app.get("/")
+@app.head("/")
 async def root():
     """Корневой путь - редирект на админку"""
     return RedirectResponse(url="/admin/login", status_code=302)
