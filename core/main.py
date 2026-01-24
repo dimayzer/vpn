@@ -6884,19 +6884,7 @@ async def _generate_vpn_configs_for_user(user_id: int, session: AsyncSession, ex
                     user_uuid = client_data.get("id") or client_data.get("uuid")
                     
                     if not user_uuid:
-                        logger.error(f"Не удалось получить UUID для клиента {client_email} из ответа API 3x-UI")
-                        # Пробуем получить UUID из Inbound напрямую
-                        inbound = await x3ui.get_inbound(server.x3ui_inbound_id)
-                        if inbound:
-                            settings = json.loads(inbound.get("settings", "{}"))
-                            clients = settings.get("clients", [])
-                            for client in clients:
-                                if client.get("email") == client_email:
-                                    user_uuid = client.get("id")
-                                    break
-                    
-                    if not user_uuid:
-                        logger.error(f"UUID не найден для клиента {client_email}, пропускаем сервер")
+                        logger.warning(f"Не удалось получить UUID для клиента {client_email} из ответа API 3x-UI, пропускаем сервер {server.name}")
                         continue
                     
                     # Получаем конфиг через API (параметры берутся из Inbound автоматически)
@@ -6906,8 +6894,16 @@ async def _generate_vpn_configs_for_user(user_id: int, session: AsyncSession, ex
                         server_host=server.host,
                         server_port=server.xray_port,  # Если None, берется из Inbound
                     )
+                    
+                    if not config_text:
+                        logger.warning(f"Не удалось получить конфиг для клиента {client_email} на сервере {server.name}, пропускаем")
+                        continue
+                else:
+                    # Клиент не был создан (инбаунд не найден или другая ошибка)
+                    logger.warning(f"Не удалось создать клиента через API 3x-UI для сервера {server.name} (ID: {server.id}, Inbound ID: {server.x3ui_inbound_id}), пропускаем")
+                    continue
             except Exception as e:
-                logger.error(f"Ошибка при создании клиента через API 3x-UI: {e}")
+                logger.warning(f"Ошибка при создании клиента через API 3x-UI для сервера {server.name}: {e}, пропускаем")
                 continue
         
         # Если API 3x-UI не настроен, используем старый способ с UUID

@@ -141,7 +141,7 @@ class X3UIAPI:
             # Сначала получаем текущий Inbound
             inbound = await self.get_inbound(inbound_id)
             if not inbound:
-                logger.error(f"Inbound {inbound_id} не найден")
+                logger.warning(f"Inbound {inbound_id} не найден в 3x-UI (возможно, был удален или изменен ID)")
                 return None
             
             # Парсим settings
@@ -271,7 +271,7 @@ class X3UIAPI:
             # Получаем текущий Inbound
             inbound = await self.get_inbound(inbound_id)
             if not inbound:
-                logger.error(f"Inbound {inbound_id} не найден")
+                logger.warning(f"Inbound {inbound_id} не найден в 3x-UI (возможно, был удален или изменен ID)")
                 return False
             
             # Парсим settings
@@ -374,7 +374,7 @@ class X3UIAPI:
             # Получаем Inbound
             inbound = await self.get_inbound(inbound_id)
             if not inbound:
-                logger.error(f"Inbound {inbound_id} не найден")
+                logger.warning(f"Inbound {inbound_id} не найден в 3x-UI (возможно, был удален или изменен ID)")
                 return None
             
             # Парсим settings для поиска клиента

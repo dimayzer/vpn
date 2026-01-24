@@ -482,7 +482,17 @@
                 </div>
                 
                 <div style="margin: 20px 0;">
-                    <h3 style="margin-bottom: 10px;">График пинга (последние 100 проверок)</h3>
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-wrap: wrap; gap: 10px;">
+                        <h3 style="margin: 0;">График пинга</h3>
+                        <div style="display: flex; gap: 5px; flex-wrap: wrap;">
+                            <button class="btn btn-small btn-muted" onclick="changeChartPeriod('10m')" id="period-10m">10 мин</button>
+                            <button class="btn btn-small btn-muted" onclick="changeChartPeriod('1h')" id="period-1h">1 час</button>
+                            <button class="btn btn-small btn-muted" onclick="changeChartPeriod('24h')" id="period-24h">Сутки</button>
+                            <button class="btn btn-small btn-muted" onclick="changeChartPeriod('7d')" id="period-7d">Неделя</button>
+                            <button class="btn btn-small btn-muted" onclick="changeChartPeriod('30d')" id="period-30d">Месяц</button>
+                            <button class="btn btn-small btn-muted" onclick="changeChartPeriod('all')" id="period-all">Все время</button>
+                        </div>
+                    </div>
                     <canvas id="pingChart" width="800" height="300" style="max-width: 100%; height: auto;"></canvas>
                 </div>
                 
@@ -709,6 +719,8 @@
         let pingChart = null;
         let currentServerId = null;
         let currentServerData = null;
+        let currentChartPeriod = '24h'; // По умолчанию показываем сутки
+        let allServerHistory = []; // Храним всю историю для фильтрации
         
         function openServerDetails(serverId, event) {
             if (event) event.stopPropagation();
@@ -766,7 +778,12 @@
                     }
                     
                     // Загружаем историю и строим график
+                    currentChartPeriod = '24h'; // Сбрасываем период при открытии
                     loadServerHistory(serverId);
+                    // Обновляем кнопки периода после небольшой задержки
+                    setTimeout(() => {
+                        updatePeriodButtons();
+                    }, 100);
                     
                     document.getElementById('serverDetailsModal').style.display = 'block';
                 })
@@ -782,35 +799,149 @@
                 pingChart.destroy();
                 pingChart = null;
             }
+            // Сбрасываем период и историю при закрытии
+            currentChartPeriod = '24h';
+            allServerHistory = [];
         }
         
         function loadServerHistory(serverId) {
             fetch(`/admin/web/api/servers/${serverId}/history`)
                 .then(r => r.json())
                 .then(data => {
-                    updatePingChart(data.history);
+                    // Сохраняем всю историю для фильтрации
+                    allServerHistory = data.history || [];
+                    // Применяем текущий фильтр периода
+                    applyChartPeriodFilter();
                 })
                 .catch(err => {
                     console.error('Ошибка при загрузке истории:', err);
                 });
         }
         
+        function changeChartPeriod(period) {
+            currentChartPeriod = period;
+            applyChartPeriodFilter();
+            updatePeriodButtons();
+        }
+        
+        function updatePeriodButtons() {
+            // Убираем активный класс со всех кнопок
+            document.querySelectorAll('[id^="period-"]').forEach(btn => {
+                btn.classList.remove('btn-primary');
+                btn.classList.add('btn-muted');
+            });
+            // Добавляем активный класс к выбранной кнопке
+            const activeBtn = document.getElementById(`period-${currentChartPeriod}`);
+            if (activeBtn) {
+                activeBtn.classList.remove('btn-muted');
+                activeBtn.classList.add('btn-primary');
+            }
+        }
+        
+        function applyChartPeriodFilter() {
+            if (!allServerHistory || allServerHistory.length === 0) {
+                updatePingChart([]);
+                return;
+            }
+            
+            const now = new Date();
+            let filteredHistory = [];
+            
+            switch (currentChartPeriod) {
+                case '10m':
+                    const tenMinutesAgo = new Date(now.getTime() - 10 * 60 * 1000);
+                    filteredHistory = allServerHistory.filter(h => {
+                        if (!h.checked_at) return false;
+                        const checkDate = new Date(h.checked_at);
+                        return checkDate >= tenMinutesAgo;
+                    });
+                    break;
+                case '1h':
+                    const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
+                    filteredHistory = allServerHistory.filter(h => {
+                        if (!h.checked_at) return false;
+                        const checkDate = new Date(h.checked_at);
+                        return checkDate >= oneHourAgo;
+                    });
+                    break;
+                case '24h':
+                    const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+                    filteredHistory = allServerHistory.filter(h => {
+                        if (!h.checked_at) return false;
+                        const checkDate = new Date(h.checked_at);
+                        return checkDate >= oneDayAgo;
+                    });
+                    break;
+                case '7d':
+                    const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+                    filteredHistory = allServerHistory.filter(h => {
+                        if (!h.checked_at) return false;
+                        const checkDate = new Date(h.checked_at);
+                        return checkDate >= sevenDaysAgo;
+                    });
+                    break;
+                case '30d':
+                    const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+                    filteredHistory = allServerHistory.filter(h => {
+                        if (!h.checked_at) return false;
+                        const checkDate = new Date(h.checked_at);
+                        return checkDate >= thirtyDaysAgo;
+                    });
+                    break;
+                case 'all':
+                default:
+                    filteredHistory = allServerHistory;
+                    break;
+            }
+            
+            // Сортируем по времени (старые первыми)
+            filteredHistory.sort((a, b) => {
+                if (!a.checked_at || !b.checked_at) return 0;
+                return new Date(a.checked_at) - new Date(b.checked_at);
+            });
+            
+            updatePingChart(filteredHistory);
+        }
+        
         function updatePingChart(history) {
             const ctx = document.getElementById('pingChart').getContext('2d');
             
             // Подготавливаем данные
-            const labels = history.map(h => {
-                if (!h.checked_at) return '';
-                const date = new Date(h.checked_at);
-                // Конвертируем в MSK используя правильный часовой пояс
-                const formatter = new Intl.DateTimeFormat('ru-RU', {
+            // Определяем формат времени в зависимости от периода
+            let timeFormatter;
+            if (currentChartPeriod === '10m' || currentChartPeriod === '1h') {
+                // Для коротких периодов показываем время с секундами
+                timeFormatter = new Intl.DateTimeFormat('ru-RU', {
                     timeZone: 'Europe/Moscow',
                     hour: '2-digit',
                     minute: '2-digit',
                     second: '2-digit',
                     hour12: false
                 });
-                return formatter.format(date);
+            } else if (currentChartPeriod === '24h') {
+                // Для суток показываем время без секунд
+                timeFormatter = new Intl.DateTimeFormat('ru-RU', {
+                    timeZone: 'Europe/Moscow',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    hour12: false
+                });
+            } else {
+                // Для длинных периодов показываем дату и время
+                timeFormatter = new Intl.DateTimeFormat('ru-RU', {
+                    timeZone: 'Europe/Moscow',
+                    day: '2-digit',
+                    month: '2-digit',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    hour12: false
+                });
+            }
+            
+            const labels = history.map(h => {
+                if (!h.checked_at) return '';
+                const date = new Date(h.checked_at);
+                return timeFormatter.format(date);
             });
             
             const pingData = history.map(h => h.is_online && h.response_time_ms != null ? h.response_time_ms : null);
