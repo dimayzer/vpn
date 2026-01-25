@@ -9,7 +9,8 @@ echo "🔍 Проверка доступности SSH-туннеля через
 TUNNEL_AVAILABLE=false
 
 # Способ 1: Проверка через curl (может не работать, если 3x-UI требует авторизацию)
-if curl -s --connect-timeout 2 --max-time 3 http://host.docker.internal:38868 > /dev/null 2>&1; then
+# Проверяем только доступность порта, не содержимое
+if curl -s --connect-timeout 2 --max-time 3 -o /dev/null -w "%{http_code}" http://host.docker.internal:38868 > /dev/null 2>&1; then
     TUNNEL_AVAILABLE=true
 fi
 

@@ -171,11 +171,20 @@ docker compose -f docker-compose.prod.yml up -d --build
 ```bash
 # Проверка на хосте
 ss -tulpn | grep 38868
-# Должно быть: 0.0.0.0:38868
+# Должно быть: 0.0.0.0:38868 (не 127.0.0.1!)
 
-# Проверка из контейнера
+# Проверка из контейнера (пустой ответ - нормально, нужна авторизация)
 docker compose -f docker-compose.prod.yml exec core curl -s http://host.docker.internal:38868/panel/api/inbounds/list
+
+# Проверка доступности порта (должен вернуть HTTP код, не ошибку подключения)
+docker compose -f docker-compose.prod.yml exec core curl -s -o /dev/null -w "%{http_code}" http://host.docker.internal:38868
+# Должен вернуть код (200, 401, 403 и т.д.), а не ошибку подключения
 ```
+
+**Если туннель работает правильно:**
+- На хосте: `0.0.0.0:38868` ✅
+- Из контейнера: curl возвращает HTTP код (не ошибку подключения) ✅
+- Генерация ключа должна работать ✅
 
 ## ✅ Шаг 7: Проверка
 
