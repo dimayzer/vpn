@@ -2236,27 +2236,6 @@ async def toggle_auto_renew(
 
 
 @app.get("/users/by_tg/{tg_id}")
-async def toggle_auto_renew(
-    tg_id: int,
-    payload: dict,
-    session: AsyncSession = Depends(get_session),
-) -> dict:
-    """Включить/выключить автопродление подписки"""
-    user = await session.scalar(select(User).where(User.tg_id == tg_id))
-    if not user:
-        raise HTTPException(status_code=404, detail="user_not_found")
-    
-    auto_renew = payload.get("auto_renew", True)
-    user.auto_renew_subscription = bool(auto_renew)
-    await session.commit()
-    
-    return {
-        "tg_id": tg_id,
-        "auto_renew_subscription": user.auto_renew_subscription,
-    }
-
-
-@app.get("/users/by_tg/{tg_id}")
 async def get_user_by_tg(tg_id: int, session: AsyncSession = Depends(get_session)) -> UserOut:
     stmt = select(User).options(selectinload(User.referred_by)).where(User.tg_id == tg_id)
     user = await session.scalar(stmt)
