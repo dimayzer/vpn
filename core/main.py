@@ -200,11 +200,13 @@ async def _check_server_status(server: Server) -> dict:
             
             try:
                 # Пытаемся получить список Inbounds (быстрая проверка доступности API)
+                # Если API отвечает (даже с пустым списком), сервер считается онлайн
                 inbounds = await x3ui.list_inbounds()
                 response_time_ms = int((time.time() - start_time) * 1000)
+                # Считаем онлайн, если API ответил (inbounds может быть пустым списком, это нормально)
                 is_online = inbounds is not None
                 
-                logger.debug(f"Проверка 3x-UI API для сервера {server.name}: online={is_online}, time={response_time_ms}ms")
+                logger.debug(f"Проверка 3x-UI API для сервера {server.name}: online={is_online}, time={response_time_ms}ms, inbounds_count={len(inbounds) if inbounds else 0}")
                 
                 return {
                     "is_online": is_online,
@@ -212,11 +214,33 @@ async def _check_server_status(server: Server) -> dict:
                     "connection_speed_mbps": None,
                     "error_message": None if is_online else "3x-UI API недоступен",
                 }
+            except ConnectionError as e:
+                # Ошибка подключения - сервер точно оффлайн
+                response_time_ms = int((time.time() - start_time) * 1000)
+                logger.warning(f"Не удалось подключиться к 3x-UI API для сервера {server.name}: {e}")
+                return {
+                    "is_online": False,
+                    "response_time_ms": response_time_ms,
+                    "connection_speed_mbps": None,
+                    "error_message": f"3x-UI API недоступен: {str(e)[:200]}",
+                }
+            except Exception as e:
+                # Другие ошибки (авторизация, парсинг и т.д.) - считаем сервер онлайн, но с предупреждением
+                response_time_ms = int((time.time() - start_time) * 1000)
+                logger.warning(f"Ошибка при проверке 3x-UI API для сервера {server.name}: {e}")
+                # Если API отвечает (даже с ошибкой), сервер считается онлайн
+                # Это может быть ошибка авторизации, но сервер доступен
+                return {
+                    "is_online": True,  # Сервер доступен, но есть проблема с API
+                    "response_time_ms": response_time_ms,
+                    "connection_speed_mbps": None,
+                    "error_message": f"3x-UI API ошибка: {str(e)[:200]}",
+                }
             finally:
                 await x3ui.close()
         except Exception as e:
-            logger.warning(f"Ошибка при проверке 3x-UI API для сервера {server.name}: {e}")
-            # Fallback на обычную проверку порта
+            # Ошибка при создании клиента API - fallback на проверку порта
+            logger.debug(f"Не удалось создать клиент 3x-UI API для сервера {server.name}, используем проверку порта: {e}")
             pass
     
     # Обычная проверка порта VPN-сервера
