@@ -292,6 +292,20 @@
                 </div>
                 
                 <div class="section">
+                    <h2 class="section-title">📄 Политика конфиденциальности</h2>
+                    <div class="form-group">
+                        <label for="privacy_policy_content">Содержимое политики конфиденциальности</label>
+                        <textarea id="privacy_policy_content" name="privacy_policy_content" style="min-height: 400px; font-family: monospace; font-size: 0.9em;" placeholder="HTML содержимое политики конфиденциальности">{{ settings.get('privacy_policy_content', '') }}</textarea>
+                        <small>HTML содержимое политики конфиденциальности. Дата последнего обновления обновляется автоматически при сохранении.</small>
+                    </div>
+                    <div class="form-group">
+                        <label>Последнее обновление</label>
+                        <input type="text" value="{{ settings.get('privacy_policy_updated_at', 'Не установлено') }}" readonly style="background: #f0f0f0;">
+                        <small>Дата последнего обновления политики конфиденциальности</small>
+                    </div>
+                </div>
+                
+                <div class="section">
                     <h2 class="section-title">⚙️ Дополнительные настройки</h2>
                     <div class="form-group">
                         <label for="trial_days">Длительность пробного периода (дней)</label>

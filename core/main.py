@@ -6655,6 +6655,56 @@ async def admin_web_update_settings(
             elif key == "auto_extend_subscription":
                 key = "auto_renew_subscription"
             
+            # Специальная обработка для политики конфиденциальности
+            if key == "privacy_policy_content":
+                # Обновляем дату последнего изменения при сохранении политики
+                from datetime import timezone
+                now_utc = datetime.now(timezone.utc)
+                # Форматируем дату в читаемый формат (МСК = UTC+3)
+                from zoneinfo import ZoneInfo
+                msk_tz = ZoneInfo("Europe/Moscow")
+                now_msk = now_utc.astimezone(msk_tz)
+                date_str = now_msk.strftime("%d.%m.%Y %H:%M МСК")
+                
+                # Сохраняем политику
+                setting = await session.scalar(select(SystemSetting).where(SystemSetting.key == key))
+                if setting:
+                    setting.value = str(value)
+                    setting.updated_by_tg_id = actor_tg
+                    setting.updated_at = now_utc
+                else:
+                    setting = SystemSetting(
+                        key=key,
+                        value=str(value),
+                        updated_by_tg_id=actor_tg,
+                        updated_at=now_utc,
+                    )
+                    session.add(setting)
+                
+                # Обновляем дату последнего изменения
+                date_setting = await session.scalar(select(SystemSetting).where(SystemSetting.key == "privacy_policy_updated_at"))
+                if date_setting:
+                    date_setting.value = date_str
+                    date_setting.updated_by_tg_id = actor_tg
+                    date_setting.updated_at = now_utc
+                else:
+                    date_setting = SystemSetting(
+                        key="privacy_policy_updated_at",
+                        value=date_str,
+                        updated_by_tg_id=actor_tg,
+                        updated_at=now_utc,
+                    )
+                    session.add(date_setting)
+                
+                session.add(
+                    AuditLog(
+                        action=AuditLogAction.admin_action,
+                        admin_tg_id=actor_tg,
+                        details=f"Обновлена политика конфиденциальности",
+                    )
+                )
+                continue
+            
             # Специальная обработка для сумм в RUB - конвертируем в копейки
             # В форме используются ключи с _cents, но значения вводятся в RUB
             if key in ["referral_reward_referrer_cents", "referral_reward_referred_cents", "min_topup_amount_cents", "max_topup_amount_cents"]:
@@ -6671,7 +6721,7 @@ async def admin_web_update_settings(
                     await session.delete(setting)
                 continue
             
-            # Пропускаем пустые значения для текстовых полей
+            # Пропускаем пустые значения для текстовых полей (кроме политики)
             if not value or (isinstance(value, str) and not value.strip()):
                 continue
             
