@@ -98,6 +98,16 @@ class CoreApi:
             r.raise_for_status()
             return r.json()
     
+    async def toggle_auto_renew(self, tg_id: int, auto_renew: bool) -> dict[str, Any]:
+        """Включить/выключить автопродление подписки"""
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            r = await client.put(
+                f"{self._base_url}/users/by_tg/{tg_id}/auto-renew",
+                json={"auto_renew": auto_renew}
+            )
+            r.raise_for_status()
+            return r.json()
+    
     async def activate_trial(self, tg_id: int) -> dict[str, Any]:
         """Активация пробного периода"""
         async with httpx.AsyncClient(timeout=10.0) as client:

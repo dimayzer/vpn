@@ -281,6 +281,12 @@
             </div>
             {% endif %}
             
+            <div style="margin-bottom: 30px;">
+                <button onclick="openCreatePlanModal()" class="btn btn-primary" style="background: #28a745; color: white; padding: 12px 24px; border: none; border-radius: 6px; cursor: pointer; font-size: 16px; font-weight: 600;">
+                    ➕ Создать новый тариф
+                </button>
+            </div>
+            
             <div class="plans-grid">
                 {% for plan in plans %}
                 <div class="plan-card {% if plan.is_active %}active{% else %}inactive{% endif %}">
@@ -334,6 +340,73 @@
             </div>
         </div>
     </div>
+    
+    <!-- Модальное окно для создания нового тарифа -->
+    <div id="createPlanModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center;">
+        <div style="background: white; padding: 30px; border-radius: 12px; max-width: 500px; width: 90%; max-height: 90vh; overflow-y: auto;">
+            <h2 style="margin-top: 0; margin-bottom: 20px;">➕ Создать новый тариф</h2>
+            <form method="post" action="/admin/web/subscription-plans/create" id="createPlanForm">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                
+                <div class="form-group">
+                    <label>Количество месяцев *:</label>
+                    <input type="number" name="months" min="1" max="24" value="1" required>
+                    <small style="color: #666;">Количество месяцев действия подписки (1-24)</small>
+                </div>
+                
+                <div class="form-group">
+                    <label>Название *:</label>
+                    <input type="text" name="name" required placeholder="Например: 1 месяц">
+                </div>
+                
+                <div class="form-group">
+                    <label>Описание:</label>
+                    <textarea name="description" placeholder="Описание тарифа (необязательно)"></textarea>
+                </div>
+                
+                <div class="form-group">
+                    <label>Цена (RUB) *:</label>
+                    <input type="number" name="price_rub" step="0.01" min="0" required placeholder="100.00">
+                    <small style="color: #666;">Цена в рублях</small>
+                </div>
+                
+                <div class="form-group">
+                    <label>Порядок отображения:</label>
+                    <input type="number" name="display_order" value="0" min="0">
+                    <small style="color: #666;">Чем меньше число, тем выше в списке</small>
+                </div>
+                
+                <div class="form-group">
+                    <label class="checkbox-label">
+                        <input type="checkbox" name="is_active" checked>
+                        <span>Тариф активен</span>
+                    </label>
+                </div>
+                
+                <div class="form-actions">
+                    <button type="submit" class="btn-save">💾 Создать тариф</button>
+                    <button type="button" onclick="closeCreatePlanModal()" class="btn" style="background: #6c757d; color: white; padding: 10px 20px; border: none; border-radius: 6px; cursor: pointer;">Отмена</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    
+    <script>
+        function openCreatePlanModal() {
+            document.getElementById('createPlanModal').style.display = 'flex';
+        }
+        
+        function closeCreatePlanModal() {
+            document.getElementById('createPlanModal').style.display = 'none';
+        }
+        
+        // Закрытие по клику вне модального окна
+        document.getElementById('createPlanModal').addEventListener('click', function(e) {
+            if (e.target === this) {
+                closeCreatePlanModal();
+            }
+        });
+    </script>
 </body>
 </html>
 

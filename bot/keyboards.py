@@ -41,7 +41,7 @@ BTN_SEARCH = "🔎 Поиск по tg_id"
 def user_menu(is_admin: bool = False, has_subscription: bool = False) -> ReplyKeyboardMarkup:
     keyboard = [
         [KeyboardButton(text=BTN_PLANS), KeyboardButton(text=BTN_TOPUP)],
-        [KeyboardButton(text=BTN_STATUS), KeyboardButton(text=BTN_PROFILE)],
+        [KeyboardButton(text=BTN_PROFILE)],
         [KeyboardButton(text=BTN_REF), KeyboardButton(text=BTN_TICKET)],
         [KeyboardButton(text=BTN_PROMO), KeyboardButton(text=BTN_HELP)],
     ]

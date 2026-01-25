@@ -66,6 +66,7 @@ from core.db.models import (
     VpnCredential,
     IpLog,
     UserBan,
+    SubscriptionNotification,
 )
 from core.xray import generate_vless_config, generate_uuid
 from core.schemas import (
@@ -233,26 +234,61 @@ async def _check_server_status(server: Server) -> dict:
                 }
                 
         except httpx.ConnectError as e:
-            # Ошибка подключения - сервер точно оффлайн
+            # Ошибка подключения - проверяем тип ошибки
             response_time_ms = int((time.time() - start_time) * 1000)
+            error_str = str(e)
             logger.warning(f"❌ Сервер {server.name}: не удалось подключиться к 3x-UI API (время={response_time_ms}ms): {e}")
+            
+            # Проверяем, не связана ли ошибка с host.docker.internal (это может быть проблема с сетью Docker, а не с сервером)
+            if "host.docker.internal" in error_str or "Name or service not known" in error_str or "nodename nor servname provided" in error_str:
+                logger.warning(f"⚠️ Сервер {server.name}: проблема с разрешением host.docker.internal, но сервер может быть онлайн")
+                return {
+                    "is_online": True,  # Считаем онлайн, так как проблема может быть в сетевой конфигурации
+                    "response_time_ms": response_time_ms,
+                    "connection_speed_mbps": None,
+                    "error_message": f"Проблема с сетью Docker (сервер может быть онлайн)",
+                }
+            
             return {
                 "is_online": False,
                 "response_time_ms": response_time_ms,
                 "connection_speed_mbps": None,
-                "error_message": f"3x-UI API недоступен: {str(e)[:200]}",
+                "error_message": f"3x-UI API недоступен: {error_str[:200]}",
+            }
+        except httpx.TimeoutException as e:
+            # Таймаут - возможно сервер медленно отвечает, но это не значит что он оффлайн
+            response_time_ms = int((time.time() - start_time) * 1000)
+            logger.warning(f"⚠️ Сервер {server.name}: таймаут при проверке 3x-UI API (время={response_time_ms}ms): {e}")
+            # При таймауте считаем сервер онлайн, но с предупреждением
+            return {
+                "is_online": True,  # Считаем онлайн при таймауте, так как это может быть временная проблема
+                "response_time_ms": response_time_ms,
+                "connection_speed_mbps": None,
+                "error_message": f"Таймаут при проверке (возможно, сервер медленно отвечает)",
             }
         except Exception as e:
             # Другие ошибки - логируем подробно
             response_time_ms = int((time.time() - start_time) * 1000)
+            error_str = str(e)
             logger.error(f"❌ Ошибка при проверке 3x-UI API для сервера {server.name} (время={response_time_ms}ms): {e}", exc_info=True)
-            # Если это не ошибка подключения, возможно сервер доступен, но есть проблема с API
-            # Для безопасности считаем оффлайн, если не уверены
+            
+            # Если ошибка связана с SSL или сертификатом, но не с подключением - считаем сервер онлайн
+            # (так как это может быть проблема с самоподписанным сертификатом, но сервер работает)
+            if "SSL" in error_str or "certificate" in error_str.lower() or "CERTIFICATE" in error_str:
+                logger.warning(f"⚠️ Сервер {server.name}: ошибка SSL/сертификата, но сервер может быть онлайн")
+                return {
+                    "is_online": True,  # Считаем онлайн при ошибках SSL
+                    "response_time_ms": response_time_ms,
+                    "connection_speed_mbps": None,
+                    "error_message": f"Ошибка SSL/сертификата (сервер может быть онлайн)",
+                }
+            
+            # Для других ошибок считаем оффлайн
             return {
                 "is_online": False,
                 "response_time_ms": response_time_ms,
                 "connection_speed_mbps": None,
-                "error_message": f"3x-UI API ошибка: {str(e)[:200]}",
+                "error_message": f"3x-UI API ошибка: {error_str[:200]}",
             }
         finally:
             if x3ui:
@@ -646,6 +682,45 @@ async def lifespan(app: FastAPI):
             import logging
             logging.warning(f"Could not add subscription_ends_at column (may already exist): {e}")
         
+        # Создаем таблицу subscription_notifications, если её нет
+        try:
+            result = await conn.execute(
+                text("SELECT table_name FROM information_schema.tables WHERE table_name='subscription_notifications'")
+            )
+            exists = result.scalar()
+            if not exists:
+                await conn.execute(text("""
+                    CREATE TABLE subscription_notifications (
+                        id SERIAL PRIMARY KEY,
+                        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                        subscription_id INTEGER REFERENCES subscriptions(id) ON DELETE CASCADE,
+                        notification_type VARCHAR(50) NOT NULL,
+                        sent_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+                    )
+                """))
+                await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_subscription_notifications_user_id ON subscription_notifications(user_id)"))
+                await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_subscription_notifications_subscription_id ON subscription_notifications(subscription_id)"))
+                await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_subscription_notifications_sent_at ON subscription_notifications(sent_at)"))
+                import logging
+                logging.info("Created subscription_notifications table")
+        except Exception as e:
+            import logging
+            logging.warning(f"Could not create subscription_notifications table (may already exist): {e}")
+        
+        # Добавляем колонку auto_renew_subscription, если её нет
+        try:
+            result = await conn.execute(
+                text("SELECT column_name FROM information_schema.columns WHERE table_name='users' AND column_name='auto_renew_subscription'")
+            )
+            exists = result.scalar()
+            if not exists:
+                await conn.execute(text("ALTER TABLE users ADD COLUMN auto_renew_subscription BOOLEAN NOT NULL DEFAULT TRUE"))
+                import logging
+                logging.info("Added auto_renew_subscription column to users table")
+        except Exception as e:
+            import logging
+            logging.warning(f"Could not add auto_renew_subscription column (may already exist): {e}")
+        
         # Добавляем колонку selected_server_id, если её нет
         try:
             result = await conn.execute(
@@ -758,10 +833,22 @@ async def lifespan(app: FastAPI):
     
     # Запускаем фоновую задачу для автоматических бэкапов
     async def auto_backup():
+        # Делаем первый бекап сразу при старте
+        try:
+            await _create_database_backup(created_by_tg_id=None)
+            import logging
+            logging.info("Initial backup created on startup")
+        except Exception as e:
+            import logging
+            logging.error(f"Error creating initial backup: {e}")
+        
+        # Затем делаем бекапы раз в сутки
         while True:
             try:
                 await asyncio.sleep(86400)  # Раз в сутки (24 часа)
                 await _create_database_backup(created_by_tg_id=None)
+                import logging
+                logging.info("Scheduled daily backup created")
             except asyncio.CancelledError:
                 break
             except Exception as e:
@@ -789,11 +876,12 @@ async def lifespan(app: FastAPI):
     
     payments_cleanup_task = asyncio.create_task(close_old_pending_payments())
     
-    # Фоновая задача для проверки истечения подписок
+    # Фоновая задача для проверки истечения подписок и отправки уведомлений
     async def check_expired_subscriptions():
-        """Проверяет истечение подписок и обновляет статус пользователей"""
+        """Проверяет истечение подписок, отправляет уведомления и удаляет клиентов из 3x-UI"""
         from core.db.session import SessionLocal
         import logging
+        from zoneinfo import ZoneInfo
         
         while True:
             try:
@@ -803,26 +891,274 @@ async def lifespan(app: FastAPI):
                 async with SessionLocal() as session:
                     try:
                         now = datetime.now(timezone.utc)
+                        three_days = timedelta(days=3)
+                        one_day = timedelta(days=1)
                         
-                        # Находим всех пользователей с активными подписками
+                        # Получаем всех пользователей с активными подписками
                         users_with_subs = await session.scalars(
                             select(User)
                             .where(User.has_active_subscription == True)
+                            .where(User.subscription_ends_at.isnot(None))
+                            .options(selectinload(User.credentials).selectinload(VpnCredential.server))
                         )
                         
                         updated_count = 0
-                        # Получаем всех пользователей и обновляем их статус подписки
+                        notifications_sent = 0
+                        clients_deleted = 0
+                        
+                        for user in users_with_subs.all():
+                            if not user.subscription_ends_at:
+                                continue
+                            
+                            time_until_expiry = user.subscription_ends_at - now
+                            
+                            # Проверяем, нужно ли отправить уведомление
+                            notification_to_send = None
+                            if time_until_expiry <= timedelta(0):
+                                # Подписка истекла
+                                notification_to_send = "expired"
+                            elif timedelta(0) < time_until_expiry <= one_day:
+                                # Менее 1 дня до истечения
+                                notification_to_send = "1_day"
+                            elif one_day < time_until_expiry <= three_days:
+                                # От 1 до 3 дней до истечения
+                                notification_to_send = "3_days"
+                            
+                            # Проверяем, не отправляли ли уже такое уведомление
+                            if notification_to_send:
+                                active_sub = await session.scalar(
+                                    select(Subscription)
+                                    .where(Subscription.user_id == user.id)
+                                    .where(Subscription.status == SubscriptionStatus.active)
+                                    .order_by(Subscription.ends_at.desc().nullslast())
+                                    .limit(1)
+                                )
+                                
+                                # Проверяем, не отправляли ли уже это уведомление для этой подписки
+                                existing_notification = await session.scalar(
+                                    select(SubscriptionNotification)
+                                    .where(SubscriptionNotification.user_id == user.id)
+                                    .where(SubscriptionNotification.notification_type == notification_to_send)
+                                    .where(
+                                        (SubscriptionNotification.subscription_id == active_sub.id) 
+                                        if active_sub else True
+                                    )
+                                    .order_by(SubscriptionNotification.sent_at.desc())
+                                    .limit(1)
+                                )
+                                
+                                # Отправляем уведомление только если не отправляли недавно (для expired - всегда)
+                                if not existing_notification or notification_to_send == "expired":
+                                    # Формируем текст уведомления
+                                    ends_at_moscow = user.subscription_ends_at.astimezone(ZoneInfo("Europe/Moscow"))
+                                    ends_str = ends_at_moscow.strftime("%d.%m.%Y %H:%M")
+                                    
+                                    if notification_to_send == "expired":
+                                        notification_text = (
+                                            f"⏰ <b>Подписка истекла</b>\n\n"
+                                            f"Ваша подписка закончилась {ends_str} МСК.\n\n"
+                                            f"Для продолжения использования VPN приобретите новую подписку в разделе '📦 Тарифы'."
+                                        )
+                                    elif notification_to_send == "1_day":
+                                        notification_text = (
+                                            f"⏰ <b>Подписка скоро истечет</b>\n\n"
+                                            f"Ваша подписка закончится через <b>1 день</b> ({ends_str} МСК).\n\n"
+                                            f"Не забудьте продлить подписку, чтобы не потерять доступ к VPN."
+                                        )
+                                    elif notification_to_send == "3_days":
+                                        notification_text = (
+                                            f"⏰ <b>Напоминание о подписке</b>\n\n"
+                                            f"Ваша подписка закончится через <b>3 дня</b> ({ends_str} МСК).\n\n"
+                                            f"Рекомендуем продлить подписку заранее."
+                                        )
+                                    
+                                    # Отправляем уведомление
+                                    try:
+                                        asyncio.create_task(_send_user_notification(user.tg_id, notification_text))
+                                        
+                                        # Сохраняем факт отправки уведомления
+                                        notification_record = SubscriptionNotification(
+                                            user_id=user.id,
+                                            subscription_id=active_sub.id if active_sub else None,
+                                            notification_type=notification_to_send,
+                                        )
+                                        session.add(notification_record)
+                                        notifications_sent += 1
+                                    except Exception as e:
+                                        logging.error(f"Error sending notification to user {user.tg_id}: {e}")
+                            
+                            # Если подписка истекла, проверяем автопродление
+                            if time_until_expiry <= timedelta(0):
+                                # Проверяем, включено ли автопродление
+                                if user.auto_renew_subscription:
+                                    # Пытаемся автоматически продлить подписку
+                                    active_sub = await session.scalar(
+                                        select(Subscription)
+                                        .where(Subscription.user_id == user.id)
+                                        .where(Subscription.status == SubscriptionStatus.active)
+                                        .order_by(Subscription.ends_at.desc().nullslast())
+                                        .limit(1)
+                                    )
+                                    
+                                    if active_sub:
+                                        # Определяем план для продления (берем последний использованный план)
+                                        plan_months = 1  # По умолчанию 1 месяц
+                                        if active_sub.plan_name:
+                                            # Пытаемся извлечь количество месяцев из названия плана
+                                            import re
+                                            match = re.search(r'(\d+)\s*месяц', active_sub.plan_name, re.IGNORECASE)
+                                            if match:
+                                                plan_months = int(match.group(1))
+                                        
+                                        # Ищем тариф с таким количеством месяцев
+                                        original_plan = await session.scalar(
+                                            select(SubscriptionPlan)
+                                            .where(SubscriptionPlan.months == plan_months)
+                                            .where(SubscriptionPlan.is_active == True)
+                                        )
+                                        
+                                        # Если не хватает средств на текущий тариф, ищем более дешевый
+                                        plan = None
+                                        if original_plan and user.balance >= original_plan.price_cents:
+                                            # Хватает на текущий тариф
+                                            plan = original_plan
+                                        else:
+                                            # Ищем самый дешевый тариф, на который хватает средств
+                                            all_plans = await session.scalars(
+                                                select(SubscriptionPlan)
+                                                .where(SubscriptionPlan.is_active == True)
+                                                .order_by(SubscriptionPlan.price_cents.asc())
+                                            )
+                                            
+                                            for candidate_plan in all_plans.all():
+                                                if user.balance >= candidate_plan.price_cents:
+                                                    plan = candidate_plan
+                                                    break
+                                        
+                                        if plan:
+                                            # Продлеваем подписку на найденный тариф
+                                            plan_months = plan.months
+                                            new_ends_at = now + timedelta(days=plan_months * 30)
+                                            active_sub.ends_at = new_ends_at
+                                            active_sub.price_cents = plan.price_cents
+                                            active_sub.plan_name = plan.name  # Обновляем название тарифа
+                                            
+                                            # Списываем баланс
+                                            user.balance -= plan.price_cents
+                                            
+                                            # Логируем
+                                            session.add(
+                                                BalanceTransaction(
+                                                    user_id=user.id,
+                                                    amount_cents=-plan.price_cents,
+                                                    type=BalanceTransactionType.subscription_purchase,
+                                                    details=f"Автопродление подписки '{plan.name}' на {plan_months} месяцев. Баланс: {user.balance / 100:.2f} RUB",
+                                                )
+                                            )
+                                            
+                                            # Формируем сообщение для лога
+                                            log_message = f"Автопродление подписки '{plan.name}' на {plan_months} месяцев"
+                                            if original_plan and plan.id != original_plan.id:
+                                                log_message += f" (переключено с '{original_plan.name}' из-за недостатка средств)"
+                                            
+                                            session.add(
+                                                AuditLog(
+                                                    action=AuditLogAction.subscription_extended,
+                                                    user_tg_id=user.tg_id,
+                                                    details=f"{log_message}. Действует до: {new_ends_at.strftime('%d.%m.%Y %H:%M')} (UTC). Баланс: {user.balance / 100:.2f} RUB",
+                                                )
+                                            )
+                                            
+                                            # Отправляем уведомление
+                                            try:
+                                                from zoneinfo import ZoneInfo
+                                                ends_at_moscow = new_ends_at.astimezone(ZoneInfo("Europe/Moscow"))
+                                                ends_str = ends_at_moscow.strftime("%d.%m.%Y %H:%M")
+                                                
+                                                notification_text = (
+                                                    f"✅ <b>Подписка автоматически продлена</b>\n\n"
+                                                    f"📦 Тариф: <b>{plan.name}</b>\n"
+                                                    f"💰 Стоимость: {plan.price_cents / 100:.2f} RUB\n"
+                                                )
+                                                
+                                                # Если тариф изменился, добавляем информацию об этом
+                                                if original_plan and plan.id != original_plan.id:
+                                                    notification_text += (
+                                                        f"⚠️ <b>Внимание:</b> Тариф изменен с '{original_plan.name}' на '{plan.name}' "
+                                                        f"из-за недостатка средств на предыдущий тариф.\n\n"
+                                                    )
+                                                
+                                                notification_text += (
+                                                    f"📅 Действует до: {ends_str} МСК\n"
+                                                    f"💵 Остаток баланса: {user.balance / 100:.2f} RUB"
+                                                )
+                                                
+                                                asyncio.create_task(_send_user_notification(user.tg_id, notification_text))
+                                            except Exception as e:
+                                                logging.error(f"Error sending auto-renewal notification to user {user.tg_id}: {e}")
+                                            
+                                            logging.info(f"Автопродление подписки для пользователя {user.tg_id}: продлено на {plan_months} месяцев (тариф: {plan.name})")
+                                            updated_count += 1
+                                        else:
+                                            # Недостаточно средств ни на один тариф - удаляем клиента
+                                            logging.info(f"Автопродление невозможно для пользователя {user.tg_id}: недостаточно средств ни на один тариф (баланс: {user.balance / 100:.2f} RUB)")
+                                            
+                                            # Отправляем уведомление о недостатке средств
+                                            try:
+                                                from zoneinfo import ZoneInfo
+                                                ends_at_moscow = user.subscription_ends_at.astimezone(ZoneInfo("Europe/Moscow")) if user.subscription_ends_at else None
+                                                ends_str = ends_at_moscow.strftime("%d.%m.%Y %H:%M") if ends_at_moscow else "—"
+                                                
+                                                # Получаем самый дешевый тариф для информации
+                                                cheapest_plan = await session.scalar(
+                                                    select(SubscriptionPlan)
+                                                    .where(SubscriptionPlan.is_active == True)
+                                                    .order_by(SubscriptionPlan.price_cents.asc())
+                                                    .limit(1)
+                                                )
+                                                
+                                                notification_text = (
+                                                    f"❌ <b>Автопродление не удалось</b>\n\n"
+                                                    f"Ваша подписка истекла {ends_str} МСК.\n\n"
+                                                    f"💵 Текущий баланс: <b>{user.balance / 100:.2f} RUB</b>\n"
+                                                )
+                                                
+                                                if cheapest_plan:
+                                                    notification_text += (
+                                                        f"💰 Минимальный тариф: <b>{cheapest_plan.name}</b> — {cheapest_plan.price_cents / 100:.2f} RUB\n\n"
+                                                    )
+                                                
+                                                notification_text += (
+                                                    "Для продолжения использования VPN пополните баланс и приобретите подписку в разделе '📦 Тарифы'."
+                                                )
+                                                
+                                                asyncio.create_task(_send_user_notification(user.tg_id, notification_text))
+                                            except Exception as e:
+                                                logging.error(f"Error sending auto-renewal failure notification to user {user.tg_id}: {e}")
+                                            
+                                            await _handle_subscription_expiry(user, session)
+                                            updated_count += 1
+                                    else:
+                                        # Нет активной подписки - удаляем клиента
+                                        await _handle_subscription_expiry(user, session)
+                                        updated_count += 1
+                                else:
+                                    # Автопродление отключено - удаляем клиента
+                                    await _handle_subscription_expiry(user, session)
+                                    updated_count += 1
+                        
+                        # Обновляем статус всех пользователей
                         all_users = await session.scalars(select(User))
                         for user in all_users.all():
                             old_status = user.has_active_subscription
                             await _update_user_subscription_status(user.id, session)
                             await session.flush()
-                            if old_status != user.has_active_subscription:
+                            if old_status != user.has_active_subscription and old_status:
                                 updated_count += 1
                         
-                        if updated_count > 0:
+                        if updated_count > 0 or notifications_sent > 0 or clients_deleted > 0:
                             await session.commit()
-                            logging.info(f"Updated subscription status for {updated_count} users")
+                            logging.info(f"Updated subscription status for {updated_count} users, sent {notifications_sent} notifications, deleted {clients_deleted} clients from 3x-UI")
                     except Exception as e:
                         logging.error(f"Error checking expired subscriptions: {e}", exc_info=True)
                         await session.rollback()
@@ -1874,6 +2210,48 @@ async def users_count(session: AsyncSession = Depends(get_session)) -> dict[str,
     return {"total": int(total or 0)}
 
 
+@app.put("/users/by_tg/{tg_id}/auto-renew")
+async def toggle_auto_renew(
+    tg_id: int,
+    payload: dict,
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    """Включить/выключить автопродление подписки"""
+    user = await session.scalar(select(User).where(User.tg_id == tg_id))
+    if not user:
+        raise HTTPException(status_code=404, detail="user_not_found")
+    
+    auto_renew = payload.get("auto_renew", True)
+    user.auto_renew_subscription = bool(auto_renew)
+    await session.commit()
+    
+    return {
+        "tg_id": tg_id,
+        "auto_renew_subscription": user.auto_renew_subscription,
+    }
+
+
+@app.get("/users/by_tg/{tg_id}")
+async def toggle_auto_renew(
+    tg_id: int,
+    payload: dict,
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    """Включить/выключить автопродление подписки"""
+    user = await session.scalar(select(User).where(User.tg_id == tg_id))
+    if not user:
+        raise HTTPException(status_code=404, detail="user_not_found")
+    
+    auto_renew = payload.get("auto_renew", True)
+    user.auto_renew_subscription = bool(auto_renew)
+    await session.commit()
+    
+    return {
+        "tg_id": tg_id,
+        "auto_renew_subscription": user.auto_renew_subscription,
+    }
+
+
 @app.get("/users/by_tg/{tg_id}")
 async def get_user_by_tg(tg_id: int, session: AsyncSession = Depends(get_session)) -> UserOut:
     stmt = select(User).options(selectinload(User.referred_by)).where(User.tg_id == tg_id)
@@ -1895,6 +2273,7 @@ async def get_user_by_tg(tg_id: int, session: AsyncSession = Depends(get_session
         has_active_subscription=user.has_active_subscription,
         subscription_ends_at=user.subscription_ends_at,
         selected_server_id=user.selected_server_id,
+        auto_renew_subscription=user.auto_renew_subscription,
         created_at=user.created_at,
     )
 
@@ -2028,6 +2407,7 @@ async def upsert_user(payload: UserUpsertIn, session: AsyncSession = Depends(get
         has_active_subscription=user.has_active_subscription,
         subscription_ends_at=user.subscription_ends_at,
         selected_server_id=user.selected_server_id,
+        auto_renew_subscription=user.auto_renew_subscription,
         created_at=user.created_at,
     )
 
@@ -3128,41 +3508,10 @@ async def purchase_subscription(
     plan_name = plan_db.name
     price_cents = plan_db.price_cents
     
-    # Проверяем, есть ли активный промокод на скидку у пользователя
-    promo_discount_cents = 0
+    # Промокоды на скидку (процент) больше не применяются при покупке подписки
+    # Промокоды на фикс сумму применяются через отдельный endpoint /promo-codes/apply
+    final_price_cents = price_cents
     promo_code_used = None
-    if payload.promo_code:
-        # Проверяем промокод на скидку (процент)
-        is_valid, error_msg, discount_cents = await _validate_promo_code(
-            payload.promo_code, user.id, price_cents, session, check_percent_usage=True
-        )
-        if is_valid:
-            promo = await session.scalar(select(PromoCode).where(PromoCode.code == payload.promo_code.upper().strip()))
-            if promo and promo.discount_percent:
-                promo_discount_cents = discount_cents
-                # Применяем промокод
-                usage = PromoCodeUsage(
-                    promo_code_id=promo.id,
-                    user_id=user.id,
-                    discount_amount_cents=promo_discount_cents,
-                )
-                session.add(usage)
-                promo.used_count += 1
-                promo_code_used = promo.code
-                # Логируем в админке
-                session.add(
-                    AuditLog(
-                        action=AuditLogAction.admin_action,
-                        user_tg_id=user.tg_id,
-                        admin_tg_id=None,
-                        details=f"Применен промокод {promo.code} (скидка {promo.discount_percent}%) при покупке подписки. Скидка: {promo_discount_cents / 100:.2f} RUB.",
-                    )
-                )
-    
-    # Применяем скидку
-    final_price_cents = price_cents - promo_discount_cents
-    if final_price_cents < 0:
-        final_price_cents = 0
     
     # Проверяем баланс
     if user.balance < final_price_cents:
@@ -3190,19 +3539,16 @@ async def purchase_subscription(
         starts_at = now
         ends_at = now + timedelta(days=payload.plan_months * 30)
     
-    # Списываем баланс (с учетом скидки)
+    # Списываем баланс
     user.balance -= final_price_cents
     
     # Создаем транзакцию баланса
-    reason = f"Покупка подписки: {plan_name}"
-    if promo_code_used:
-        reason += f" (промокод {promo_code_used}, скидка {promo_discount_cents / 100:.2f} RUB)"
     session.add(
         BalanceTransaction(
             user_id=user.id,
             admin_tg_id=None,
             amount=-final_price_cents,  # Отрицательное значение = списание
-            reason=reason,
+            reason=f"Покупка подписки: {plan_name}",
         )
     )
     
@@ -3226,10 +3572,7 @@ async def purchase_subscription(
         session.add(subscription)
     
     # Логируем покупку
-    log_details = f"Покупка подписки: {plan_name}. Цена: {final_price_cents / 100:.2f} RUB"
-    if promo_code_used:
-        log_details += f" (промокод {promo_code_used}, скидка {promo_discount_cents / 100:.2f} RUB)"
-    log_details += f". Действует до: {ends_at.strftime('%d.%m.%Y %H:%M')} (UTC)"
+    log_details = f"Покупка подписки: {plan_name}. Цена: {final_price_cents / 100:.2f} RUB. Действует до: {ends_at.strftime('%d.%m.%Y %H:%M')} (UTC)"
     session.add(
         AuditLog(
             action=AuditLogAction.subscription_created,
@@ -3257,12 +3600,8 @@ async def purchase_subscription(
             notification_text = (
                 f"✅ <b>Подписка успешно активирована!</b>\n\n"
                 f"📦 Тариф: <b>{plan_name}</b>\n"
-                f"💰 Стоимость: {final_price_cents / 100:.2f} RUB"
-            )
-            if promo_code_used:
-                notification_text += f"\n🎟️ Промокод: {promo_code_used} (скидка {promo_discount_cents / 100:.2f} RUB)"
-            notification_text += (
-                f"\n📅 Действует до: {ends_str} МСК\n"
+                f"💰 Стоимость: {final_price_cents / 100:.2f} RUB\n"
+                f"📅 Действует до: {ends_str} МСК\n"
                 f"💵 Остаток баланса: {user.balance / 100:.2f} RUB"
             )
             asyncio.create_task(_send_user_notification(user.tg_id, notification_text))
@@ -3274,10 +3613,6 @@ async def purchase_subscription(
         "plan_name": plan_name,
         "price_cents": final_price_cents,
         "price_rub": final_price_cents / 100,
-        "original_price_cents": price_cents,
-        "original_price_rub": price_cents / 100,
-        "discount_cents": promo_discount_cents,
-        "promo_code": promo_code_used,
         "starts_at": starts_at.isoformat(),
         "ends_at": ends_at.isoformat(),
         "balance_remaining": user.balance / 100,
@@ -3407,6 +3742,49 @@ async def referral_info_by_tg(tg_id: int, session: AsyncSession = Depends(get_se
 
 
 # --- Admin actions (optionally protected by ADMIN_TOKEN) ---
+async def _send_user_notification_with_menu_update(tg_id: int, text: str, bot_token: str | None = None) -> None:
+    """Отправляет уведомление пользователю и обновляет его меню"""
+    try:
+        from bot.keyboards import user_menu
+        from aiogram import Bot
+        from aiogram.types import ReplyKeyboardMarkup
+        
+        settings = get_settings()
+        if not bot_token:
+            bot_token = os.getenv("BOT_TOKEN", "") or settings.bot_token
+        
+        if not bot_token:
+            logger.warning(f"Не удалось отправить уведомление пользователю {tg_id}: bot_token не настроен")
+            return
+        
+        bot = Bot(token=bot_token)
+        
+        # Проверяем статус подписки для обновления меню
+        has_subscription = False
+        try:
+            async with SessionLocal() as session:
+                user = await session.scalar(select(User).where(User.tg_id == tg_id))
+                if user:
+                    has_subscription = user.has_active_subscription
+        except Exception:
+            pass
+        
+        # Проверяем, является ли пользователь админом
+        is_admin = tg_id in set(settings.admin_ids)
+        
+        # Отправляем сообщение с обновленным меню
+        await bot.send_message(
+            chat_id=tg_id,
+            text=text,
+            parse_mode="HTML",
+            reply_markup=user_menu(is_admin=is_admin, has_subscription=has_subscription)
+        )
+        
+        await bot.session.close()
+    except Exception as e:
+        logger.error(f"Ошибка при отправке уведомления с обновлением меню пользователю {tg_id}: {e}", exc_info=True)
+
+
 async def _send_user_notification(tg_id: int, text: str, bot_token: str | None = None) -> None:
     """Отправляет уведомление пользователю в боте"""
     if not bot_token:
@@ -5385,6 +5763,10 @@ async def support_webhook(
         session.add(ticket)
         await session.flush()
     else:
+        # Проверяем, не закрыт ли тикет
+        if ticket.status == TicketStatus.closed:
+            # Тикет закрыт, не обрабатываем сообщение
+            return {"status": "ignored", "reason": "ticket_closed"}
         ticket.updated_at = now
 
     session.add(
@@ -5764,13 +6146,50 @@ async def admin_web_manage_subscription(
                 sub.status = SubscriptionStatus.canceled
                 canceled_count += 1
             
+            # Удаляем клиента из 3x-UI на всех серверах
+            credentials = await session.scalars(
+                select(VpnCredential)
+                .where(VpnCredential.user_id == user.id)
+                .where(VpnCredential.active == True)
+                .options(selectinload(VpnCredential.server))
+            )
+            
+            deleted_clients = 0
+            for cred in credentials.all():
+                if not cred.server or not cred.user_uuid:
+                    continue
+                
+                server = cred.server
+                if server.x3ui_api_url and server.x3ui_username and server.x3ui_password:
+                    try:
+                        from core.x3ui_api import X3UIAPI
+                        x3ui = X3UIAPI(
+                            api_url=server.x3ui_api_url,
+                            username=server.x3ui_username,
+                            password=server.x3ui_password,
+                        )
+                        try:
+                            client_email = f"tg_{user.tg_id}_server_{server.id}@fiorevpn"
+                            inbound_id = server.x3ui_inbound_id
+                            if inbound_id:
+                                deleted = await x3ui.delete_client(inbound_id, client_email)
+                                if deleted:
+                                    logger.info(f"Удален клиент {client_email} из 3x-UI при отмене подписки")
+                                    deleted_clients += 1
+                                # Помечаем credential как неактивный
+                                cred.active = False
+                        finally:
+                            await x3ui.close()
+                    except Exception as e:
+                        logger.error(f"Error deleting client from 3x-UI when canceling subscription: {e}")
+            
             # Логируем
             session.add(
                 AuditLog(
                     action=AuditLogAction.admin_action,
                     user_tg_id=tg_id,
                     admin_tg_id=actor_tg,
-                    details=f"Отменена подписка администратором. Причина: {reason}",
+                    details=f"Отменена подписка администратором. Причина: {reason}. Удалено клиентов из 3x-UI: {deleted_clients}",
                 )
             )
             
@@ -5781,15 +6200,16 @@ async def admin_web_manage_subscription(
             await session.commit()
             await session.refresh(user)  # Обновляем данные пользователя в сессии
             
-            # Отправляем уведомление пользователю
+            # Отправляем уведомление пользователю с обновленным меню
             notification_text = (
                 f"📋 <b>Подписка отменена</b>\n\n"
                 f"Ваша подписка была отменена администратором.\n\n"
                 f"Причина: {reason}"
             )
-            asyncio.create_task(_send_user_notification(tg_id, notification_text))
+            # Отправляем уведомление и обновляем меню пользователя
+            asyncio.create_task(_send_user_notification_with_menu_update(tg_id, notification_text))
             
-            return JSONResponse({"success": True, "message": f"Отменено подписок: {canceled_count}"})
+            return JSONResponse({"success": True, "message": f"Отменено подписок: {canceled_count}, удалено клиентов из 3x-UI: {deleted_clients}"})
         
         elif action == "add":
             # Выдаем новую подписку
@@ -5973,6 +6393,10 @@ async def admin_web_send_message(
         session.add(ticket)
         await session.flush()
     else:
+        # Проверяем, не закрыт ли тикет
+        if ticket.status == TicketStatus.closed:
+            back = request.headers.get("referer") or f"/admin/web/users/{tg_id}"
+            return RedirectResponse(url=f"{back}?error=ticket_closed", status_code=303)
         ticket.updated_at = now
 
     # Сохраняем сообщение в тикете
@@ -6880,6 +7304,67 @@ async def admin_web_update_subscription_plan(
         return RedirectResponse(url=f"/admin/web/subscription-plans?error={str(e)}", status_code=303)
 
 
+@app.post("/admin/web/subscription-plans/create")
+async def admin_web_create_subscription_plan(
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    admin_user: dict = Depends(_require_web_admin),
+):
+    """Создание нового тарифа подписки"""
+    _require_csrf(request)
+    try:
+        form_data = await request.form()
+        
+        months = int(form_data.get("months", 0))
+        name = str(form_data.get("name", "")).strip()
+        description = str(form_data.get("description", "")).strip() or None
+        price_rub = float(form_data.get("price_rub", 0))
+        is_active = form_data.get("is_active") == "on"
+        display_order = int(form_data.get("display_order", 0))
+        
+        if months < 1 or months > 24:
+            return RedirectResponse(url="/admin/web/subscription-plans?error=invalid_months", status_code=303)
+        
+        if not name:
+            return RedirectResponse(url="/admin/web/subscription-plans?error=name_required", status_code=303)
+        
+        if price_rub <= 0:
+            return RedirectResponse(url="/admin/web/subscription-plans?error=invalid_price", status_code=303)
+        
+        # Проверяем, нет ли уже тарифа с таким количеством месяцев
+        existing_plan = await session.scalar(
+            select(SubscriptionPlan).where(SubscriptionPlan.months == months)
+        )
+        if existing_plan:
+            return RedirectResponse(url="/admin/web/subscription-plans?error=plan_with_months_exists", status_code=303)
+        
+        # Создаем новый тариф
+        new_plan = SubscriptionPlan(
+            months=months,
+            name=name,
+            description=description,
+            price_cents=int(price_rub * 100),
+            is_active=is_active,
+            display_order=display_order,
+        )
+        session.add(new_plan)
+        
+        session.add(
+            AuditLog(
+                action=AuditLogAction.admin_action,
+                admin_tg_id=admin_user.get("tg_id"),
+                details=f"Создан новый тариф подписки: {name} ({months} месяцев). Цена: {price_rub:.2f} RUB",
+            )
+        )
+        
+        await session.commit()
+        return RedirectResponse(url="/admin/web/subscription-plans?success=created", status_code=303)
+    except Exception as e:
+        import logging
+        logging.error(f"Error creating subscription plan: {e}", exc_info=True)
+        return RedirectResponse(url=f"/admin/web/subscription-plans?error={str(e)}", status_code=303)
+
+
 @app.get("/admin/web/promo-codes", response_class=HTMLResponse)
 async def admin_web_promo_codes(
     request: Request,
@@ -7613,6 +8098,7 @@ async def _generate_vpn_config_for_user_server(user_id: int, server_id: int, ses
             
             # Получаем настройки лимитов из SystemSetting
             limit_ip_setting = await session.scalar(select(SystemSetting).where(SystemSetting.key == "vpn_limit_ip"))
+            limit_traffic_setting = await session.scalar(select(SystemSetting).where(SystemSetting.key == "vpn_limit_traffic_gb"))
             
             limit_ip = 1  # По умолчанию 1 IP
             if limit_ip_setting:
@@ -7620,6 +8106,13 @@ async def _generate_vpn_config_for_user_server(user_id: int, server_id: int, ses
                     limit_ip = int(limit_ip_setting.value)
                 except (ValueError, TypeError):
                     limit_ip = 1
+            
+            total_gb = 0  # По умолчанию без ограничений
+            if limit_traffic_setting:
+                try:
+                    total_gb = int(float(limit_traffic_setting.value))
+                except (ValueError, TypeError):
+                    total_gb = 0
             
             # Создаем клиента в 3x-UI
             expire_timestamp = int(expires_at.timestamp() * 1000) if expires_at else 0  # 3x-UI использует миллисекунды
@@ -7636,7 +8129,7 @@ async def _generate_vpn_config_for_user_server(user_id: int, server_id: int, ses
                     flow=server.xray_flow or "",
                     expire=expire_timestamp,
                     limit_ip=limit_ip,
-                    total_gb=0,  # Без ограничений трафика
+                    total_gb=total_gb,  # Лимит трафика из настроек (0 = без ограничений)
                 )
             except ConnectionError as e:
                 # Специальная обработка ошибок подключения

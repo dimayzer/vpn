@@ -48,6 +48,7 @@ class User(Base):
     has_active_subscription: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, index=True)  # Есть ли активная подписка
     subscription_ends_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)  # Дата окончания активной подписки
     selected_server_id: Mapped[int | None] = mapped_column(ForeignKey("servers.id", ondelete="SET NULL"), nullable=True, index=True)  # Выбранный сервер пользователем
+    auto_renew_subscription: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)  # Автопродление подписки (по умолчанию включено)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
 
     subscriptions: Mapped[list["Subscription"]] = relationship("Subscription", back_populates="user")
@@ -371,6 +372,19 @@ class UserBan(Base):
     unbanned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     unbanned_by_tg_id: Mapped[int | None] = mapped_column(BigInteger)
     auto_ban: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)  # Автоматический бан или ручной
+    
+    user: Mapped["User"] = relationship("User")
+
+
+class SubscriptionNotification(Base):
+    """Отслеживание отправленных уведомлений о подписке"""
+    __tablename__ = "subscription_notifications"
+    
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    subscription_id: Mapped[int | None] = mapped_column(ForeignKey("subscriptions.id", ondelete="CASCADE"), nullable=True, index=True)
+    notification_type: Mapped[str] = mapped_column(String(50), nullable=False)  # "3_days", "1_day", "expired"
+    sent_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, nullable=False, index=True)
     
     user: Mapped["User"] = relationship("User")
 

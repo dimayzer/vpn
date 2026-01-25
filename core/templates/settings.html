@@ -289,6 +289,11 @@
                         <input type="number" id="ip_monitor_interval_minutes" name="ip_monitor_interval_minutes" value="{{ settings.get('ip_monitor_interval_minutes', '5') }}" placeholder="5" min="1" max="60">
                         <small>Как часто проверять IP адреса пользователей для автобана</small>
                     </div>
+                    <div class="form-group">
+                        <label for="vpn_limit_traffic_gb">Лимит трафика на пользователя (GB)</label>
+                        <input type="number" id="vpn_limit_traffic_gb" name="vpn_limit_traffic_gb" value="{{ settings.get('vpn_limit_traffic_gb', '0') }}" placeholder="0" min="0" step="0.1">
+                        <small>Максимальный объем трафика для одного пользователя в GB. 0 = без ограничений. Применяется при создании новых VPN ключей.</small>
+                    </div>
                 </div>
                 
                 <div class="section">

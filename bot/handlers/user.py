@@ -202,8 +202,13 @@ async def ticket_topic(message: Message, state: FSMContext) -> None:
         deep_link = f"https://t.me/{support_username}?start={ticket_id}"
         kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Перейти в тикет", url=deep_link)]])
         await message.answer(
-            f"Тикет #{ticket_id} создан.\nТема: {topic}\n\nПерейди в support-бот, чтобы продолжить общение:",
+            f"✅ <b>Тикет #{ticket_id} создан</b>\n\n"
+            f"📋 Тема: {topic}\n\n"
+            f"💬 <b>Важно:</b> Перейди в чат с поддержкой и отправь <b>подробное сообщение</b> с описанием проблемы.\n"
+            f"Администратор ответит на твое сообщение в течение рабочего времени.\n\n"
+            f"Чем подробнее ты опишешь проблему, тем быстрее мы сможем помочь!",
             reply_markup=kb,
+            parse_mode="HTML",
         )
     except Exception:
         await message.answer("Не удалось создать тикет. Попробуйте позже.")
@@ -347,6 +352,20 @@ async def profile(message: Message) -> None:
 
         # Получаем реферальную информацию
         ref_data = await api.referral_info(tg_id)
+        
+        # Получаем информацию о выбранном сервере
+        selected_server_id = user_data.get("selected_server_id")
+        selected_server_name = None
+        if selected_server_id:
+            try:
+                servers_response = await api.get_available_servers()
+                servers = servers_response.get("servers", [])
+                for server in servers:
+                    if server.get("id") == selected_server_id:
+                        selected_server_name = server.get("name", f"Сервер {selected_server_id}")
+                        break
+            except Exception:
+                pass  # Игнорируем ошибки получения серверов
 
         # Форматируем профиль
         balance_cents = user_data.get("balance", 0)
@@ -395,7 +414,9 @@ async def profile(message: Message) -> None:
                     ends_str = "—"
             except:
                 ends_str = ends_at[:10] if len(ends_at) >= 10 else ends_at
-            profile_text += f"✅ Активна\nТариф: {plan}\nДо: {ends_str}\n"
+            profile_text += f"✅ Активна\nТариф: {plan}\nДо: {ends_str} МСК\n"
+            if selected_server_name:
+                profile_text += f"📡 Сервер: {selected_server_name}\n"
         else:
             profile_text += "❌ Нет активной подписки\n"
 
@@ -415,11 +436,16 @@ async def profile(message: Message) -> None:
             f"━━━━━━━━━━━━━━━━"
         )
 
+        # Получаем настройку автопродления
+        auto_renew = user_data.get("auto_renew_subscription", True)
+        auto_renew_text = "🔄 Автопродление: ВКЛ" if auto_renew else "🔄 Автопродление: ВЫКЛ"
+        
         # Добавляем inline-кнопки для личного кабинета
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="💰 Пополнить баланс", callback_data=f"topup_{tg_id}")],
             [InlineKeyboardButton(text="💳 История платежей", callback_data=f"payments_{tg_id}")],
             [InlineKeyboardButton(text="📊 Статистика", callback_data=f"stats_{tg_id}")],
+            [InlineKeyboardButton(text=auto_renew_text, callback_data=f"toggle_autorenew_{tg_id}")],
         ])
 
         await message.answer(profile_text, parse_mode="HTML", reply_markup=keyboard)
@@ -748,7 +774,9 @@ async def show_profile_callback(callback: CallbackQuery) -> None:
                     ends_str = "—"
             except:
                 ends_str = ends_at[:10] if len(ends_at) >= 10 else ends_at
-            profile_text += f"✅ Активна\nТариф: {plan}\nДо: {ends_str}\n"
+            profile_text += f"✅ Активна\nТариф: {plan}\nДо: {ends_str} МСК\n"
+            if selected_server_name:
+                profile_text += f"📡 Сервер: {selected_server_name}\n"
         else:
             profile_text += "❌ Нет активной подписки\n"
         
@@ -762,16 +790,25 @@ async def show_profile_callback(callback: CallbackQuery) -> None:
         if referred_by_tg_id:
             profile_text += f"Приглашен: <code>{referred_by_tg_id}</code>\n"
         
+        # Добавляем информацию об автопродлении
+        auto_renew = user_data.get("auto_renew_subscription", True)
+        auto_renew_status = "✅ Включено" if auto_renew else "❌ Выключено"
         profile_text += (
+            f"━━━━━━━━━━━━━━━━\n"
+            f"🔄 Автопродление: {auto_renew_status}\n"
             f"━━━━━━━━━━━━━━━━\n"
             f"📅 Регистрация: {created_str} МСК\n"
             f"━━━━━━━━━━━━━━━━"
         )
         
+        # Получаем настройку автопродления для кнопки
+        auto_renew_text = "🔄 Автопродление: ВКЛ" if auto_renew else "🔄 Автопродление: ВЫКЛ"
+        
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="💰 Пополнить баланс", callback_data=f"topup_{tg_id}")],
             [InlineKeyboardButton(text="💳 История платежей", callback_data=f"payments_{tg_id}")],
             [InlineKeyboardButton(text="📊 Статистика", callback_data=f"stats_{tg_id}")],
+            [InlineKeyboardButton(text=auto_renew_text, callback_data=f"toggle_autorenew_{tg_id}")],
         ])
         
         await callback.message.edit_text(profile_text, parse_mode="HTML", reply_markup=keyboard)
