@@ -183,108 +183,15 @@ async def _test_connection_speed(server: Server) -> float | None:
 
 async def _check_server_status(server: Server) -> dict:
     """
-    Проверяет состояние одного сервера
+    Простая проверка состояния сервера: если сервер пингуется - он онлайн
     
-    Логика проверки:
-    1. Проверка доступности API (авторизация в 3x-UI API)
-    2. Проверка доступности сервера (ping/порт)
-    
-    Если оба доступны - сервер ONLINE
+    Проверяет доступность сервера через ping или проверку порта
     """
     import socket
     import time
-    import httpx
     
-    # Если сервер использует 3x-UI API, проверяем доступность API
-    if server.x3ui_api_url and server.x3ui_username and server.x3ui_password:
-        from core.x3ui_api import X3UIAPI
-        start_time = time.time()
-        x3ui = None
-        
-        try:
-            # Создаем временный клиент для проверки
-            x3ui = X3UIAPI(
-                api_url=server.x3ui_api_url,
-                username=server.x3ui_username,
-                password=server.x3ui_password,
-            )
-            
-            # Проверяем доступность API через авторизацию
-            login_success = await x3ui.login()
-            response_time_ms = int((time.time() - start_time) * 1000)
-            
-            if login_success:
-                # API доступен - сервер онлайн
-                logger.info(f"✅ Сервер {server.name}: онлайн (3x-UI API доступен), время={response_time_ms}ms")
-                return {
-                    "is_online": True,
-                    "response_time_ms": response_time_ms,
-                    "connection_speed_mbps": None,
-                    "error_message": None,
-                }
-            else:
-                # API недоступен - сервер оффлайн
-                logger.warning(f"❌ Сервер {server.name}: 3x-UI API недоступен (время={response_time_ms}ms)")
-                return {
-                    "is_online": False,
-                    "response_time_ms": response_time_ms,
-                    "connection_speed_mbps": None,
-                    "error_message": "3x-UI API: ошибка авторизации",
-                }
-                
-        except httpx.ConnectError as e:
-            # Ошибка подключения - сервер оффлайн
-            response_time_ms = int((time.time() - start_time) * 1000)
-            error_str = str(e)
-            logger.warning(f"❌ Сервер {server.name}: не удалось подключиться к 3x-UI API (время={response_time_ms}ms): {e}")
-            
-            return {
-                "is_online": False,
-                "response_time_ms": response_time_ms,
-                "connection_speed_mbps": None,
-                "error_message": f"3x-UI API недоступен: {error_str[:200]}",
-            }
-        except httpx.TimeoutException as e:
-            # Таймаут - сервер оффлайн
-            response_time_ms = int((time.time() - start_time) * 1000)
-            logger.warning(f"❌ Сервер {server.name}: таймаут при проверке 3x-UI API (время={response_time_ms}ms): {e}")
-            return {
-                "is_online": False,
-                "response_time_ms": response_time_ms,
-                "connection_speed_mbps": None,
-                "error_message": "Таймаут при проверке 3x-UI API",
-            }
-        except Exception as e:
-            # Другие ошибки - сервер оффлайн
-            response_time_ms = int((time.time() - start_time) * 1000)
-            error_str = str(e)
-            logger.error(f"❌ Ошибка при проверке 3x-UI API для сервера {server.name} (время={response_time_ms}ms): {e}", exc_info=True)
-            
-            return {
-                "is_online": False,
-                "response_time_ms": response_time_ms,
-                "connection_speed_mbps": None,
-                "error_message": f"3x-UI API ошибка: {error_str[:200]}",
-            }
-        finally:
-            if x3ui:
-                try:
-                    await x3ui.close()
-                except:
-                    pass
-        
-        # Если дошли сюда, значит что-то пошло не так
-        logger.warning(f"Проверка 3x-UI API для {server.name} завершилась неожиданно")
-        return {
-            "is_online": False,
-            "response_time_ms": int((time.time() - start_time) * 1000),
-            "connection_speed_mbps": None,
-            "error_message": "Неожиданная ошибка при проверке 3x-UI API",
-        }
-    
-    # Обычная проверка порта VPN-сервера
-    port = server.xray_port or 443
     host = server.host
+    port = server.xray_port or 443
     
     logger.debug(f"Проверка сервера {server.name} ({host}:{port})")
     
@@ -297,21 +204,16 @@ async def _check_server_status(server: Server) -> dict:
         )
         response_time_ms = int((time.time() - start_time) * 1000)
         
-        logger.debug(f"Результат проверки {server.name}: online={is_online}, time={response_time_ms}ms")
-        
-        # Тестируем скорость соединения, если сервер онлайн
-        connection_speed_mbps = None
         if is_online:
-            connection_speed_mbps = await _test_connection_speed(server)
-            if connection_speed_mbps:
-                logger.debug(f"Скорость соединения с {server.name}: {connection_speed_mbps:.2f} Мбит/с")
+            logger.info(f"✅ Сервер {server.name}: онлайн (ping успешен), время={response_time_ms}ms")
+        else:
+            logger.warning(f"❌ Сервер {server.name}: оффлайн (ping не прошел), время={response_time_ms}ms")
         
-        # Всегда возвращаем response_time_ms для диагностики
         return {
             "is_online": is_online,
-            "response_time_ms": response_time_ms,  # Показываем время даже при ошибке
-            "connection_speed_mbps": connection_speed_mbps,
-            "error_message": None if is_online else f"Port {port} unreachable (timeout: {response_time_ms}ms)",
+            "response_time_ms": response_time_ms,
+            "connection_speed_mbps": None,
+            "error_message": None if is_online else f"Сервер {host}:{port} недоступен",
         }
     except Exception as e:
         logger.error(f"Ошибка при проверке сервера {server.name}: {e}")
