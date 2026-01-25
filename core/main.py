@@ -1695,10 +1695,21 @@ def _get_csrf_token(request: Request) -> str:
     return token
 
 
-def _require_csrf(request: Request) -> None:
+async def _require_csrf(request: Request) -> None:
     expected = request.session.get("csrf_token")
     provided = request.headers.get("X-CSRF-Token")
+    
+    # Если токен не в заголовке, пробуем получить из формы
+    if not provided:
+        try:
+            form = await request.form()
+            provided = form.get("csrf_token")
+        except Exception:
+            pass
+    
     if not expected or not provided or provided != expected:
+        import logging
+        logging.warning(f"CSRF validation failed: expected={expected}, provided={provided}, path={request.url.path}")
         raise HTTPException(status_code=403, detail="csrf_forbidden")
 
 
@@ -1834,10 +1845,21 @@ def _get_csrf_token(request: Request) -> str:
     return token
 
 
-def _require_csrf(request: Request) -> None:
+async def _require_csrf(request: Request) -> None:
     expected = request.session.get("csrf_token")
     provided = request.headers.get("X-CSRF-Token")
+    
+    # Если токен не в заголовке, пробуем получить из формы
+    if not provided:
+        try:
+            form = await request.form()
+            provided = form.get("csrf_token")
+        except Exception:
+            pass
+    
     if not expected or not provided or provided != expected:
+        import logging
+        logging.warning(f"CSRF validation failed: expected={expected}, provided={provided}, path={request.url.path}")
         raise HTTPException(status_code=403, detail="csrf_forbidden")
 
 
@@ -1849,10 +1871,21 @@ def _get_csrf_token(request: Request) -> str:
     return token
 
 
-def _require_csrf(request: Request) -> None:
+async def _require_csrf(request: Request) -> None:
     expected = request.session.get("csrf_token")
     provided = request.headers.get("X-CSRF-Token")
+    
+    # Если токен не в заголовке, пробуем получить из формы
+    if not provided:
+        try:
+            form = await request.form()
+            provided = form.get("csrf_token")
+        except Exception:
+            pass
+    
     if not expected or not provided or provided != expected:
+        import logging
+        logging.warning(f"CSRF validation failed: expected={expected}, provided={provided}, path={request.url.path}")
         raise HTTPException(status_code=403, detail="csrf_forbidden")
 
 
@@ -5681,7 +5714,7 @@ async def admin_web_block_user(
     session: AsyncSession = Depends(get_session),
     admin_user: dict = Depends(_require_web_admin),
 ):
-    _require_csrf(request)
+    await _require_csrf(request)
     form = await request.form()
     tg_id = int(str(form.get("tg_id", "0")))
     ticket_id = form.get("ticket_id")
@@ -5789,7 +5822,7 @@ async def admin_web_unblock_user(
     session: AsyncSession = Depends(get_session),
     admin_user: dict = Depends(_require_web_admin),
 ):
-    _require_csrf(request)
+    await _require_csrf(request)
     form = await request.form()
     tg_id = int(str(form.get("tg_id", "0")))
     reason = str(form.get("reason", "")).strip()
@@ -5839,7 +5872,7 @@ async def admin_web_vpn_ban_user(
     admin_user: dict = Depends(_require_web_admin),
 ):
     """Забанить пользователя в VPN (отключить клиента в 3x-UI)"""
-    _require_csrf(request)
+    await _require_csrf(request)
     form = await request.form()
     tg_id = int(str(form.get("tg_id", "0")))
     reason = str(form.get("reason", "")).strip()
@@ -5935,7 +5968,7 @@ async def admin_web_vpn_unban_user(
     admin_user: dict = Depends(_require_web_admin),
 ):
     """Разбанить пользователя в VPN"""
-    _require_csrf(request)
+    await _require_csrf(request)
     form = await request.form()
     tg_id = int(str(form.get("tg_id", "0")))
     
@@ -6012,7 +6045,7 @@ async def admin_web_credit_user(
     session: AsyncSession = Depends(get_session),
     admin_user: dict = Depends(_require_web_admin),
 ):
-    _require_csrf(request)
+    await _require_csrf(request)
     form = await request.form()
     tg_id = int(str(form.get("tg_id", "0")))
     amount_str = str(form.get("amount", "0")).replace(",", ".").strip()
@@ -6104,7 +6137,7 @@ async def admin_web_manage_subscription(
     """Управление подпиской пользователя через админ-панель"""
     from datetime import timedelta, timezone
     
-    _require_csrf(request)
+    await _require_csrf(request)
     try:
         data = await request.json()
         tg_id = data.get("tg_id")
@@ -6330,7 +6363,7 @@ async def admin_web_send_message(
     session: AsyncSession = Depends(get_session),
     admin_user: dict = Depends(_require_web_admin),
 ):
-    _require_csrf(request)
+    await _require_csrf(request)
     form = await request.form()
     tg_id = int(str(form.get("tg_id", "0")))
     ticket_id = form.get("ticket_id")
@@ -6822,7 +6855,7 @@ async def admin_web_set_role(
     session: AsyncSession = Depends(get_session),
     admin_user: dict = Depends(_require_web_admin),
 ):
-    _require_csrf(request)
+    await _require_csrf(request)
     form = await request.form()
     tg_id = int(str(form.get("tg_id", "0")))
     role = str(form.get("role", "user")).strip()
@@ -6878,7 +6911,7 @@ async def admin_web_bulk_block_users(
     admin_user: dict = Depends(_require_web_admin),
 ):
     """Массовая блокировка пользователей"""
-    _require_csrf(request)
+    await _require_csrf(request)
     try:
         data = await request.json()
         user_ids = data.get("user_ids", [])
@@ -6930,7 +6963,7 @@ async def admin_web_bulk_unblock_users(
     admin_user: dict = Depends(_require_web_admin),
 ):
     """Массовая разблокировка пользователей"""
-    _require_csrf(request)
+    await _require_csrf(request)
     try:
         data = await request.json()
         user_ids = data.get("user_ids", [])
@@ -6982,7 +7015,7 @@ async def admin_web_bulk_credit_users(
     admin_user: dict = Depends(_require_web_admin),
 ):
     """Массовое изменение баланса пользователей"""
-    _require_csrf(request)
+    await _require_csrf(request)
     try:
         data = await request.json()
         user_ids = data.get("user_ids", [])
@@ -7072,7 +7105,7 @@ async def admin_web_update_settings(
     admin_user: dict = Depends(_require_web_admin),
 ):
     """Обновление настроек системы"""
-    _require_csrf(request)
+    await _require_csrf(request)
     try:
         form_data = await request.form()
         actor_tg = admin_user.get("tg_id")
@@ -7260,7 +7293,7 @@ async def admin_web_update_subscription_plan(
     admin_user: dict = Depends(_require_web_admin),
 ):
     """Обновление тарифа подписки"""
-    _require_csrf(request)
+    await _require_csrf(request)
     try:
         form_data = await request.form()
         plan_id = int(form_data.get("plan_id"))
@@ -7305,9 +7338,15 @@ async def admin_web_create_subscription_plan(
     admin_user: dict = Depends(_require_web_admin),
 ):
     """Создание нового тарифа подписки"""
-    _require_csrf(request)
+    import logging
+    logging.info(f"Creating subscription plan: path={request.url.path}, method={request.method}")
+    
+    await _require_csrf(request)
+    logging.info("CSRF validation passed")
+    
     try:
         form_data = await request.form()
+        logging.info(f"Form data received: {dict(form_data)}")
         
         days = int(form_data.get("days", 0))
         name = str(form_data.get("name", "")).strip()
@@ -7354,12 +7393,15 @@ async def admin_web_create_subscription_plan(
         await session.commit()
         await session.refresh(new_plan)  # Обновляем объект после commit, чтобы получить ID
         
-        import logging
         logging.info(f"Создан новый тариф подписки: ID={new_plan.id}, name={name}, days={days}, price={price_rub:.2f} RUB")
+        logging.info(f"Redirecting to /admin/web/subscription-plans?success=created")
         
         return RedirectResponse(url="/admin/web/subscription-plans?success=created", status_code=303)
+    except HTTPException as e:
+        # Если это HTTPException (например, CSRF ошибка), пробрасываем дальше
+        logging.error(f"HTTPException in create subscription plan: {e.status_code} - {e.detail}")
+        raise
     except Exception as e:
-        import logging
         logging.error(f"Error creating subscription plan: {e}", exc_info=True)
         return RedirectResponse(url=f"/admin/web/subscription-plans?error={str(e)}", status_code=303)
 
@@ -7420,7 +7462,7 @@ async def admin_web_create_promo_code(
     admin_user: dict = Depends(_require_web_admin),
 ):
     """Создание нового промокода"""
-    _require_csrf(request)
+    await _require_csrf(request)
     try:
         form = await request.form()
         
@@ -7599,7 +7641,7 @@ async def admin_web_toggle_promo_code(
     admin_user: dict = Depends(_require_web_admin),
 ):
     """Активация/деактивация промокода"""
-    _require_csrf(request)
+    await _require_csrf(request)
     promo = await session.scalar(select(PromoCode).where(PromoCode.id == promo_id))
     if not promo:
         return RedirectResponse(url="/admin/web/promo-codes?error=not_found", status_code=303)
