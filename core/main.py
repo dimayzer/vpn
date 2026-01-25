@@ -1250,20 +1250,34 @@ async def root():
 
 @app.get("/privacy", response_class=HTMLResponse)
 @app.get("/privacy-policy", response_class=HTMLResponse)
-async def privacy_policy(request: Request):
-    """Страница политики конфиденциальности"""
+async def privacy_policy(request: Request, session: AsyncSession = Depends(get_session)):
+    """Политика конфиденциальности"""
     if not templates:
         return HTMLResponse(content="<h1>Шаблоны не настроены</h1>", status_code=500)
     
-    from datetime import datetime
-    last_updated = datetime.now().strftime("%d.%m.%Y")
+    # Получаем содержимое политики и дату последнего обновления из настроек
+    privacy_content_setting = await session.scalar(
+        select(SystemSetting).where(SystemSetting.key == "privacy_policy_content")
+    )
+    last_updated_setting = await session.scalar(
+        select(SystemSetting).where(SystemSetting.key == "privacy_policy_updated_at")
+    )
     
+    # Если есть кастомное содержимое, используем его, иначе дефолтный шаблон
+    if privacy_content_setting and privacy_content_setting.value:
+        # Возвращаем кастомное содержимое как HTML, заменяя плейсхолдер даты
+        last_updated = last_updated_setting.value if last_updated_setting else "Не указано"
+        html_content = privacy_content_setting.value.replace("{{ last_updated }}", last_updated)
+        return HTMLResponse(content=html_content)
+    
+    # Дефолтный шаблон
+    last_updated = last_updated_setting.value if last_updated_setting else "Не указано"
     return templates.TemplateResponse(
         "privacy.html",
         {
             "request": request,
             "last_updated": last_updated,
-        }
+        },
     )
 
 
