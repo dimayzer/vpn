@@ -717,9 +717,14 @@ async def lifespan(app: FastAPI):
                 await conn.execute(text("ALTER TABLE users ADD COLUMN auto_renew_subscription BOOLEAN NOT NULL DEFAULT TRUE"))
                 import logging
                 logging.info("Added auto_renew_subscription column to users table")
+            else:
+                # Колонка существует, обновляем NULL значения на True
+                await conn.execute(text("UPDATE users SET auto_renew_subscription = TRUE WHERE auto_renew_subscription IS NULL"))
+                import logging
+                logging.info("Updated NULL values in auto_renew_subscription column to TRUE")
         except Exception as e:
             import logging
-            logging.warning(f"Could not add auto_renew_subscription column (may already exist): {e}")
+            logging.warning(f"Could not add/update auto_renew_subscription column (may already exist): {e}")
         
         # Добавляем колонку selected_server_id, если её нет
         try:
@@ -2242,6 +2247,8 @@ async def get_user_by_tg(tg_id: int, session: AsyncSession = Depends(get_session
     if not user:
         raise HTTPException(status_code=404, detail="user_not_found")
     referred_by_tg_id = user.referred_by.tg_id if user.referred_by else None
+    # Обрабатываем случай, когда auto_renew_subscription может быть None
+    auto_renew = user.auto_renew_subscription if user.auto_renew_subscription is not None else True
     return UserOut(
         id=user.id,
         tg_id=user.tg_id,
@@ -2256,7 +2263,7 @@ async def get_user_by_tg(tg_id: int, session: AsyncSession = Depends(get_session
         has_active_subscription=user.has_active_subscription,
         subscription_ends_at=user.subscription_ends_at,
         selected_server_id=user.selected_server_id,
-        auto_renew_subscription=user.auto_renew_subscription,
+        auto_renew_subscription=auto_renew,
         created_at=user.created_at,
     )
 
@@ -2376,6 +2383,8 @@ async def upsert_user(payload: UserUpsertIn, session: AsyncSession = Depends(get
     # Перезагружаем с relationship после refresh
     user = await session.scalar(stmt)
     referred_by_tg_id = user.referred_by.tg_id if user.referred_by else None
+    # Обрабатываем случай, когда auto_renew_subscription может быть None
+    auto_renew = user.auto_renew_subscription if user.auto_renew_subscription is not None else True
     return UserOut(
         id=user.id,
         tg_id=user.tg_id,
@@ -2390,7 +2399,7 @@ async def upsert_user(payload: UserUpsertIn, session: AsyncSession = Depends(get
         has_active_subscription=user.has_active_subscription,
         subscription_ends_at=user.subscription_ends_at,
         selected_server_id=user.selected_server_id,
-        auto_renew_subscription=user.auto_renew_subscription,
+        auto_renew_subscription=auto_renew,
         created_at=user.created_at,
     )
 
