@@ -1001,21 +1001,26 @@ async def lifespan(app: FastAPI):
                                     )
                                     
                                     if active_sub:
-                                        # Определяем план для продления (берем последний использованный план)
-                                        plan_months = 1  # По умолчанию 1 месяц
+                                        # Ищем тариф для продления
+                                        # Сначала пытаемся найти тариф по названию (для обратной совместимости)
+                                        original_plan = None
                                         if active_sub.plan_name:
-                                            # Пытаемся извлечь количество месяцев из названия плана
-                                            import re
-                                            match = re.search(r'(\d+)\s*месяц', active_sub.plan_name, re.IGNORECASE)
-                                            if match:
-                                                plan_months = int(match.group(1))
+                                            # Пытаемся найти тариф по названию
+                                            plans_by_name = await session.scalars(
+                                                select(SubscriptionPlan)
+                                                .where(SubscriptionPlan.name == active_sub.plan_name)
+                                                .where(SubscriptionPlan.is_active == True)
+                                            )
+                                            original_plan = plans_by_name.first()
                                         
-                                        # Ищем тариф с таким количеством месяцев
-                                        original_plan = await session.scalar(
-                                            select(SubscriptionPlan)
-                                            .where(SubscriptionPlan.months == plan_months)
-                                            .where(SubscriptionPlan.is_active == True)
-                                        )
+                                        # Если не нашли по названию, ищем самый похожий по цене
+                                        if not original_plan and active_sub.price_cents:
+                                            plans_by_price = await session.scalars(
+                                                select(SubscriptionPlan)
+                                                .where(SubscriptionPlan.price_cents == active_sub.price_cents)
+                                                .where(SubscriptionPlan.is_active == True)
+                                            )
+                                            original_plan = plans_by_price.first()
                                         
                                         # Если не хватает средств на текущий тариф, ищем более дешевый
                                         plan = None
@@ -1037,8 +1042,7 @@ async def lifespan(app: FastAPI):
                                         
                                         if plan:
                                             # Продлеваем подписку на найденный тариф
-                                            plan_months = plan.months
-                                            new_ends_at = now + timedelta(days=plan_months * 30)
+                                            new_ends_at = now + timedelta(days=plan.days)
                                             active_sub.ends_at = new_ends_at
                                             active_sub.price_cents = plan.price_cents
                                             active_sub.plan_name = plan.name  # Обновляем название тарифа
@@ -1052,12 +1056,12 @@ async def lifespan(app: FastAPI):
                                                     user_id=user.id,
                                                     amount_cents=-plan.price_cents,
                                                     type=BalanceTransactionType.subscription_purchase,
-                                                    details=f"Автопродление подписки '{plan.name}' на {plan_months} месяцев. Баланс: {user.balance / 100:.2f} RUB",
+                                                    details=f"Автопродление подписки '{plan.name}' на {plan.days} дней. Баланс: {user.balance / 100:.2f} RUB",
                                                 )
                                             )
                                             
                                             # Формируем сообщение для лога
-                                            log_message = f"Автопродление подписки '{plan.name}' на {plan_months} месяцев"
+                                            log_message = f"Автопродление подписки '{plan.name}' на {plan.days} дней"
                                             if original_plan and plan.id != original_plan.id:
                                                 log_message += f" (переключено с '{original_plan.name}' из-за недостатка средств)"
                                             
@@ -1097,7 +1101,7 @@ async def lifespan(app: FastAPI):
                                             except Exception as e:
                                                 logging.error(f"Error sending auto-renewal notification to user {user.tg_id}: {e}")
                                             
-                                            logging.info(f"Автопродление подписки для пользователя {user.tg_id}: продлено на {plan_months} месяцев (тариф: {plan.name})")
+                                            logging.info(f"Автопродление подписки для пользователя {user.tg_id}: продлено на {plan.days} дней (тариф: {plan.name})")
                                             updated_count += 1
                                         else:
                                             # Недостаточно средств ни на один тариф - удаляем клиента
@@ -3426,10 +3430,10 @@ async def _get_subscription_plans_from_db(session: AsyncSession) -> dict[int, di
     plans = await session.scalars(
         select(SubscriptionPlan)
         .where(SubscriptionPlan.is_active == True)
-        .order_by(SubscriptionPlan.display_order, SubscriptionPlan.months)
+        .order_by(SubscriptionPlan.display_order, SubscriptionPlan.days)
     )
     return {
-        plan.months: {
+        plan.days: {
             "name": plan.name,
             "price_cents": plan.price_cents,
             "description": plan.description or "",
@@ -3445,10 +3449,12 @@ async def _ensure_default_plans(session: AsyncSession) -> None:
         return
     
     default_plans = [
-        SubscriptionPlan(months=1, name="1 месяц", price_cents=10000, description="Месячная подписка", display_order=1),
-        SubscriptionPlan(months=3, name="3 месяца", price_cents=27000, description="Трехмесячная подписка со скидкой 10%", display_order=2),
-        SubscriptionPlan(months=6, name="6 месяцев", price_cents=48000, description="Полугодовая подписка со скидкой 20%", display_order=3),
-        SubscriptionPlan(months=12, name="12 месяцев", price_cents=84000, description="Годовая подписка со скидкой 30%", display_order=4),
+        SubscriptionPlan(days=1, name="1 день", price_cents=500, description="Пробный день", display_order=1),
+        SubscriptionPlan(days=7, name="7 дней", price_cents=3000, description="Недельная подписка", display_order=2),
+        SubscriptionPlan(days=30, name="1 месяц", price_cents=10000, description="Месячная подписка", display_order=3),
+        SubscriptionPlan(days=90, name="3 месяца", price_cents=27000, description="Трехмесячная подписка со скидкой 10%", display_order=4),
+        SubscriptionPlan(days=180, name="6 месяцев", price_cents=48000, description="Полугодовая подписка со скидкой 20%", display_order=5),
+        SubscriptionPlan(days=365, name="12 месяцев", price_cents=84000, description="Годовая подписка со скидкой 30%", display_order=6),
     ]
     for plan in default_plans:
         session.add(plan)
@@ -3462,13 +3468,13 @@ async def get_subscription_plans(session: AsyncSession = Depends(get_session)) -
     plans = await session.scalars(
         select(SubscriptionPlan)
         .where(SubscriptionPlan.is_active == True)
-        .order_by(SubscriptionPlan.display_order, SubscriptionPlan.months)
+        .order_by(SubscriptionPlan.display_order, SubscriptionPlan.days)
     )
     return {
         "plans": [
             {
                 "id": plan.id,
-                "months": plan.months,
+                "days": plan.days,
                 "name": plan.name,
                 "description": plan.description or "",
                 "price_cents": plan.price_cents,
@@ -3498,7 +3504,7 @@ async def purchase_subscription(
     # Получаем план из БД
     plan_db = await session.scalar(
         select(SubscriptionPlan)
-        .where(SubscriptionPlan.months == payload.plan_months)
+        .where(SubscriptionPlan.days == payload.plan_days)
         .where(SubscriptionPlan.is_active == True)
     )
     
@@ -3533,11 +3539,11 @@ async def purchase_subscription(
     if active_sub and active_sub.ends_at and active_sub.ends_at > now:
         # Продлеваем от текущей даты окончания
         starts_at = active_sub.ends_at
-        ends_at = starts_at + timedelta(days=payload.plan_months * 30)
+        ends_at = starts_at + timedelta(days=payload.plan_days)
     else:
         # Создаем новую подписку
         starts_at = now
-        ends_at = now + timedelta(days=payload.plan_months * 30)
+        ends_at = now + timedelta(days=payload.plan_days)
     
     # Списываем баланс
     user.balance -= final_price_cents
@@ -7243,7 +7249,7 @@ async def admin_web_subscription_plans(
     
     plans_result = await session.scalars(
         select(SubscriptionPlan)
-        .order_by(SubscriptionPlan.display_order, SubscriptionPlan.months)
+        .order_by(SubscriptionPlan.display_order, SubscriptionPlan.days)
     )
     plans = plans_result.all()
     
@@ -7315,15 +7321,15 @@ async def admin_web_create_subscription_plan(
     try:
         form_data = await request.form()
         
-        months = int(form_data.get("months", 0))
+        days = int(form_data.get("days", 0))
         name = str(form_data.get("name", "")).strip()
         description = str(form_data.get("description", "")).strip() or None
         price_rub = float(form_data.get("price_rub", 0))
         is_active = form_data.get("is_active") == "on"
         display_order = int(form_data.get("display_order", 0))
         
-        if months < 1 or months > 24:
-            return RedirectResponse(url="/admin/web/subscription-plans?error=invalid_months", status_code=303)
+        if days < 1 or days > 3650:  # Максимум 10 лет
+            return RedirectResponse(url="/admin/web/subscription-plans?error=invalid_days", status_code=303)
         
         if not name:
             return RedirectResponse(url="/admin/web/subscription-plans?error=name_required", status_code=303)
@@ -7331,16 +7337,16 @@ async def admin_web_create_subscription_plan(
         if price_rub <= 0:
             return RedirectResponse(url="/admin/web/subscription-plans?error=invalid_price", status_code=303)
         
-        # Проверяем, нет ли уже тарифа с таким количеством месяцев
+        # Проверяем, нет ли уже тарифа с таким количеством дней
         existing_plan = await session.scalar(
-            select(SubscriptionPlan).where(SubscriptionPlan.months == months)
+            select(SubscriptionPlan).where(SubscriptionPlan.days == days)
         )
         if existing_plan:
-            return RedirectResponse(url="/admin/web/subscription-plans?error=plan_with_months_exists", status_code=303)
+            return RedirectResponse(url="/admin/web/subscription-plans?error=plan_with_days_exists", status_code=303)
         
         # Создаем новый тариф
         new_plan = SubscriptionPlan(
-            months=months,
+            days=days,
             name=name,
             description=description,
             price_cents=int(price_rub * 100),
@@ -7353,7 +7359,7 @@ async def admin_web_create_subscription_plan(
             AuditLog(
                 action=AuditLogAction.admin_action,
                 admin_tg_id=admin_user.get("tg_id"),
-                details=f"Создан новый тариф подписки: {name} ({months} месяцев). Цена: {price_rub:.2f} RUB",
+                details=f"Создан новый тариф подписки: {name} ({days} дней). Цена: {price_rub:.2f} RUB",
             )
         )
         

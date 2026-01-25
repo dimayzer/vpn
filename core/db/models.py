@@ -91,8 +91,8 @@ class SubscriptionPlan(Base):
     __tablename__ = "subscription_plans"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    months: Mapped[int] = mapped_column(Integer, unique=True, nullable=False)  # 1, 3, 6, 12
-    name: Mapped[str] = mapped_column(String(100), nullable=False)  # "1 месяц", "3 месяца" и т.д.
+    days: Mapped[int] = mapped_column(Integer, unique=True, nullable=False)  # Количество дней (1, 7, 30, 90, 180, 365 и т.д.)
+    name: Mapped[str] = mapped_column(String(100), nullable=False)  # "1 день", "1 месяц", "3 месяца" и т.д.
     description: Mapped[str | None] = mapped_column(String(500), nullable=True)  # Описание тарифа
     price_cents: Mapped[int] = mapped_column(Integer, nullable=False)  # Цена в копейках (RUB)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)  # Активен ли тариф

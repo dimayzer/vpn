@@ -53,10 +53,10 @@ class CoreApi:
             r.raise_for_status()
             return r.json()
     
-    async def purchase_subscription(self, tg_id: int, plan_months: int, promo_code: str | None = None) -> dict[str, Any]:
+    async def purchase_subscription(self, tg_id: int, plan_days: int, promo_code: str | None = None) -> dict[str, Any]:
         """Покупка подписки"""
         async with httpx.AsyncClient(timeout=10.0) as client:
-            payload = {"tg_id": tg_id, "plan_months": plan_months}
+            payload = {"tg_id": tg_id, "plan_days": plan_days}
             if promo_code:
                 payload["promo_code"] = promo_code
             r = await client.post(

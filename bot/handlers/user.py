@@ -254,11 +254,11 @@ async def plans_btn(message: Message) -> None:
         for plan in plans:
             if not plan.get("is_active", True):
                 continue
-            months = plan.get("months", 0)
+            days = plan.get("days", 0)
             name = plan.get("name", "")
             price_rub = plan.get("price_rub", 0)
             keyboard_buttons.append([
-                InlineKeyboardButton(text=f"{name} — {price_rub:.0f} RUB", callback_data=f"buy_plan_{months}_{message.from_user.id}"),
+                InlineKeyboardButton(text=f"{name} — {price_rub:.0f} RUB", callback_data=f"buy_plan_{days}_{message.from_user.id}"),
             ])
         
         keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
@@ -286,7 +286,7 @@ async def plans_btn(message: Message) -> None:
         for plan in plans:
             if not plan.get("is_active", True):
                 continue
-            months = plan.get("months", 0)
+            days = plan.get("days", 0)
             name = plan.get("name", "")
             price_rub = plan.get("price_rub", 0)
             description = plan.get("description", "")
@@ -1234,7 +1234,7 @@ async def buy_plan_handler(callback: CallbackQuery) -> None:
         return
     
     parts = callback.data.split("_")
-    plan_months = int(parts[2])
+    plan_days = int(parts[2])
     tg_id = int(parts[3])
     
     if callback.from_user.id != tg_id:
@@ -1246,7 +1246,7 @@ async def buy_plan_handler(callback: CallbackQuery) -> None:
         api = CoreApi(str(settings.core_api_base), admin_token=settings.admin_token or "")
         
         # Покупаем подписку
-        result = await api.purchase_subscription(callback.from_user.id, plan_months)
+        result = await api.purchase_subscription(callback.from_user.id, plan_days)
         
         plan_name = result.get("plan_name", "")
         price_rub = result.get("price_rub", 0)
