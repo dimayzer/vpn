@@ -270,7 +270,11 @@
         </div>
         
         <div class="content">
-            {% if request.query_params.get('success') %}
+            {% if request.query_params.get('success') == 'created' %}
+            <div class="alert alert-success">
+                ✅ Тариф успешно создан!
+            </div>
+            {% elif request.query_params.get('success') == 'updated' %}
             <div class="alert alert-success">
                 ✅ Тариф успешно обновлен!
             </div>
@@ -405,6 +409,19 @@
             if (e.target === this) {
                 closeCreatePlanModal();
             }
+        });
+        
+        // Обработка успешного создания тарифа
+        if (window.location.search.includes('success=created')) {
+            // Закрываем модальное окно, если оно открыто
+            closeCreatePlanModal();
+            // Прокручиваем страницу вверх, чтобы показать сообщение об успехе
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+        
+        // Обработка формы создания тарифа
+        document.getElementById('createPlanForm').addEventListener('submit', function(e) {
+            // Форма отправится, и после редиректа модальное окно закроется автоматически
         });
     </script>
 </body>
