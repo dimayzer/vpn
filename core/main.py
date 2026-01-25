@@ -266,7 +266,7 @@ async def _check_server_status(server: Server) -> dict:
     # Берем только IP адрес из host (убираем порт если есть)
     host = server.host.split(':')[0].split('/')[0].strip()
     
-    logger.debug(f"Проверка сервера {server.name}: ping {host}")
+    logger.info(f"Проверка сервера {server.name}: ping {host}")
     
     try:
         start_time = time.time()
@@ -278,25 +278,37 @@ async def _check_server_status(server: Server) -> dict:
         loop = asyncio.get_event_loop()
         result = await loop.run_in_executor(
             None,
-            lambda: subprocess.run(ping_cmd, capture_output=True, timeout=10)
+            lambda: subprocess.run(ping_cmd, capture_output=True, text=True, timeout=10)
         )
         
         response_time_ms = int((time.time() - start_time) * 1000)
+        
+        # Детальное логирование для отладки
+        logger.info(f"Ping результат для {server.name} ({host}): returncode={result.returncode}, stdout={result.stdout[:200]}, stderr={result.stderr[:200]}")
+        
+        # Проверяем результат: returncode == 0 означает успех
         is_online = result.returncode == 0
+        
+        # Дополнительная проверка: если returncode != 0, но в stdout есть "1 received" или "time=", считаем онлайн
+        if not is_online and result.stdout:
+            stdout_lower = result.stdout.lower()
+            if "1 received" in stdout_lower or "time=" in stdout_lower or "ttl=" in stdout_lower:
+                logger.warning(f"Ping вернул returncode={result.returncode}, но похоже что ответ получен. Считаем онлайн.")
+                is_online = True
         
         if is_online:
             logger.info(f"✅ Сервер {server.name} ({host}): онлайн, время={response_time_ms}ms")
         else:
-            logger.warning(f"❌ Сервер {server.name} ({host}): оффлайн, время={response_time_ms}ms")
+            logger.warning(f"❌ Сервер {server.name} ({host}): оффлайн, время={response_time_ms}ms, returncode={result.returncode}")
         
         return {
             "is_online": is_online,
             "response_time_ms": response_time_ms,
             "connection_speed_mbps": None,
-            "error_message": None if is_online else f"Ping {host} failed",
+            "error_message": None if is_online else f"Ping {host} failed (returncode={result.returncode})",
         }
     except Exception as e:
-        logger.error(f"Ошибка при ping {host}: {e}")
+        logger.error(f"Ошибка при ping {host}: {e}", exc_info=True)
         return {
             "is_online": False,
             "response_time_ms": None,
