@@ -4,11 +4,38 @@ set -e
 # SSH-туннель должен быть запущен на хосте, а не в контейнере
 # Проверяем доступность туннеля через host.docker.internal
 echo "🔍 Проверка доступности SSH-туннеля через host.docker.internal:38868..."
-if curl -s --connect-timeout 2 http://host.docker.internal:38868 > /dev/null 2>&1; then
+
+# Используем несколько способов проверки
+TUNNEL_AVAILABLE=false
+
+# Способ 1: Проверка через curl (может не работать, если 3x-UI требует авторизацию)
+if curl -s --connect-timeout 2 --max-time 3 http://host.docker.internal:38868 > /dev/null 2>&1; then
+    TUNNEL_AVAILABLE=true
+fi
+
+# Способ 2: Проверка через nc (netcat) или socket
+if ! $TUNNEL_AVAILABLE; then
+    if command -v nc >/dev/null 2>&1; then
+        if nc -z -w 2 host.docker.internal 38868 2>/dev/null; then
+            TUNNEL_AVAILABLE=true
+        fi
+    fi
+fi
+
+# Способ 3: Проверка через timeout и /dev/tcp (bash builtin)
+if ! $TUNNEL_AVAILABLE; then
+    if timeout 2 bash -c "echo > /dev/tcp/host.docker.internal/38868" 2>/dev/null; then
+        TUNNEL_AVAILABLE=true
+    fi
+fi
+
+if $TUNNEL_AVAILABLE; then
     echo "✅ SSH-туннель доступен через host.docker.internal:38868"
 else
-    echo "⚠️ Предупреждение: SSH-туннель недоступен через host.docker.internal:38868"
+    echo "⚠️ Предупреждение: Не удалось проверить доступность SSH-туннеля"
+    echo "ℹ️ Это может быть нормально, если туннель только что запущен"
     echo "ℹ️ Убедитесь, что SSH-туннель запущен на хосте и слушает на 0.0.0.0:38868"
+    echo "ℹ️ Проверка на хосте: ss -tulpn | grep 38868"
     echo "ℹ️ Команда для запуска на хосте:"
     echo "   ssh -N -L 0.0.0.0:38868:127.0.0.1:38868 -i ~/fiorevpn/ssh/x3ui_key root@62.133.60.47"
 fi
