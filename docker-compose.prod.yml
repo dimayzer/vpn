@@ -26,6 +26,8 @@ services:
       context: .
       dockerfile: Dockerfile.core
     restart: unless-stopped
+    cap_add:
+      - NET_RAW  # Для ping (ICMP)
     env_file:
       - .env
     environment:

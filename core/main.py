@@ -116,64 +116,139 @@ def _check_port_sync(host: str, port: int, timeout: int = 10) -> bool:
 
 
 async def _test_connection_speed(server: Server) -> float | None:
-    """Тестирует скорость соединения с сервером"""
-    import httpx
-    import time
+    """
+    Тестирует скорость соединения с сервером через реальную передачу данных
     
+    Методы проверки (в порядке приоритета):
+    1. iperf3 - точное измерение пропускной способности (если доступен)
+    2. TCP socket с реальной передачей данных - альтернативный метод
+    """
+    import subprocess
+    import socket
+    import time
+    import asyncio
+    
+    host = server.host
+    
+    # Метод 1: Используем iperf3 для точного измерения скорости
     try:
-        # Используем HTTP запрос для измерения скорости
-        # Загружаем тестовые данные (1 МБ)
-        test_size_mb = 1.0
-        test_size_bytes = int(test_size_mb * 1024 * 1024)
+        # iperf3 обычно работает на порту 5201
+        iperf3_port = 5201
         
-        # Генерируем тестовые данные
-        test_data = b'0' * test_size_bytes
-        
-        # Создаем временный эндпоинт для теста скорости
-        # Используем простой HTTP запрос к серверу
-        url = f"http://{server.host}:{server.xray_port or 80}"
-        
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            start_time = time.time()
-            try:
-                # Пытаемся подключиться и измерить время
-                response = await client.get(url, follow_redirects=False)
-                elapsed = time.time() - start_time
-                
-                # Если сервер отвечает, вычисляем примерную скорость
-                # На основе времени подключения и размера данных
-                if elapsed > 0:
-                    # Примерная оценка: чем быстрее ответ, тем выше скорость
-                    # Используем обратную зависимость от времени отклика
-                    speed_mbps = (test_size_mb * 8) / elapsed if elapsed > 0 else None
-                    return speed_mbps
-            except Exception:
-                # Если HTTP не работает, пробуем через socket
-                pass
-        
-        # Альтернативный метод: измерение через socket
-        import socket
+        # Проверяем, доступен ли iperf3 server на сервере
+        # Сначала проверяем доступность порта
         loop = asyncio.get_event_loop()
+        port_check = await loop.run_in_executor(
+            None,
+            lambda: _check_port_sync(host, iperf3_port, timeout=3)
+        )
         
-        def test_socket_speed():
+        if port_check:
+            # Пытаемся запустить iperf3 client для измерения скорости
+            # iperf3 -c host -p port -t 5 -f m (5 секунд теста, результат в Мбит/с)
+            iperf3_cmd = [
+                'iperf3',
+                '-c', host,
+                '-p', str(iperf3_port),
+                '-t', '5',  # 5 секунд теста
+                '-f', 'm',  # Формат вывода: Мбит/с
+                '--json'  # JSON формат для парсинга
+            ]
+            
             try:
-                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                sock.settimeout(5)
-                start = time.time()
-                result = sock.connect_ex((server.host, server.xray_port or 443))
-                elapsed = time.time() - start
-                sock.close()
+                result = await asyncio.wait_for(
+                    loop.run_in_executor(
+                        None,
+                        lambda: subprocess.run(iperf3_cmd, capture_output=True, text=True, timeout=10)
+                    ),
+                    timeout=10
+                )
                 
-                if result == 0 and elapsed > 0:
-                    # Оценка скорости на основе времени подключения
-                    # Чем быстрее подключение, тем выше скорость
-                    speed_mbps = (test_size_mb * 8) / (elapsed * 10)  # Умножаем на 10 для более реалистичной оценки
-                    return speed_mbps
-            except Exception:
-                pass
-            return None
+                if result.returncode == 0 and result.stdout:
+                    # Парсим JSON вывод iperf3
+                    import json
+                    try:
+                        data = json.loads(result.stdout)
+                        # iperf3 возвращает скорость в end.sum_sent.bits_per_second или end.sum_received.bits_per_second
+                        if 'end' in data and 'sum_sent' in data['end']:
+                            bits_per_second = data['end']['sum_sent'].get('bits_per_second', 0)
+                            speed_mbps = bits_per_second / 1_000_000  # Конвертируем в Мбит/с
+                            logger.info(f"✅ Скорость {server.name} через iperf3: {speed_mbps:.2f} Мбит/с")
+                            return speed_mbps
+                        elif 'end' in data and 'sum_received' in data['end']:
+                            bits_per_second = data['end']['sum_received'].get('bits_per_second', 0)
+                            speed_mbps = bits_per_second / 1_000_000
+                            logger.info(f"✅ Скорость {server.name} через iperf3: {speed_mbps:.2f} Мбит/с")
+                            return speed_mbps
+                    except (json.JSONDecodeError, KeyError) as e:
+                        logger.debug(f"Не удалось распарсить вывод iperf3 для {server.name}: {e}")
+            except (subprocess.TimeoutExpired, asyncio.TimeoutError):
+                logger.debug(f"Таймаут при запуске iperf3 для {server.name}")
+            except FileNotFoundError:
+                logger.debug(f"iperf3 не установлен, используем альтернативный метод")
+            except Exception as e:
+                logger.debug(f"Ошибка при запуске iperf3 для {server.name}: {e}")
+    except Exception as e:
+        logger.debug(f"Ошибка при проверке iperf3 для {server.name}: {e}")
+    
+    # Метод 2: TCP socket с реальной передачей данных
+    try:
+        # Используем порт сервера или стандартный порт для теста
+        test_port = server.xray_port or 443
         
-        speed = await loop.run_in_executor(None, test_socket_speed)
+        def test_tcp_speed():
+            """Тест скорости через TCP с реальной передачей данных"""
+            try:
+                # Размер тестовых данных: 1 МБ
+                test_size_bytes = 1024 * 1024
+                test_data = b'0' * test_size_bytes
+                
+                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                sock.settimeout(10)
+                
+                # Подключаемся к серверу
+                connect_start = time.time()
+                result = sock.connect_ex((host, test_port))
+                if result != 0:
+                    sock.close()
+                    return None
+                
+                connect_time = time.time() - connect_start
+                
+                # Отправляем данные и измеряем время
+                send_start = time.time()
+                total_sent = 0
+                chunk_size = 8192  # 8 КБ чанки
+                
+                try:
+                    for i in range(0, len(test_data), chunk_size):
+                        chunk = test_data[i:i + chunk_size]
+                        sent = sock.send(chunk)
+                        if sent == 0:
+                            break
+                        total_sent += sent
+                    
+                    send_time = time.time() - send_start
+                    sock.close()
+                    
+                    if send_time > 0 and total_sent > 0:
+                        # Вычисляем скорость: (байты * 8 бит) / время в секундах / 1_000_000 = Мбит/с
+                        speed_mbps = (total_sent * 8) / send_time / 1_000_000
+                        logger.info(f"✅ Скорость {server.name} через TCP: {speed_mbps:.2f} Мбит/с (отправлено {total_sent} байт за {send_time:.2f}с)")
+                        return speed_mbps
+                except socket.timeout:
+                    sock.close()
+                    return None
+                except Exception:
+                    sock.close()
+                    return None
+                    
+            except Exception as e:
+                logger.debug(f"Ошибка при TCP тесте скорости для {server.name}: {e}")
+                return None
+        
+        loop = asyncio.get_event_loop()
+        speed = await loop.run_in_executor(None, test_tcp_speed)
         return speed
         
     except Exception as e:
@@ -216,13 +291,16 @@ async def _check_server_status(server: Server) -> dict:
         
         if is_online:
             logger.info(f"✅ Сервер {server.name}: онлайн (ping успешен), время={response_time_ms}ms")
+            # Если сервер онлайн, измеряем скорость соединения
+            connection_speed_mbps = await _test_connection_speed(server)
         else:
             logger.warning(f"❌ Сервер {server.name}: оффлайн (ping не прошел), время={response_time_ms}ms")
+            connection_speed_mbps = None
         
         return {
             "is_online": is_online,
             "response_time_ms": response_time_ms,
-            "connection_speed_mbps": None,
+            "connection_speed_mbps": connection_speed_mbps,
             "error_message": None if is_online else f"Сервер {host} недоступен (ping failed)",
         }
     except subprocess.TimeoutExpired:

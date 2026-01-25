@@ -7,6 +7,8 @@ RUN apt-get update && \
     apt-get install -y --no-install-recommends \
     postgresql-client \
     curl \
+    iputils-ping \
+    iperf3 \
     && rm -rf /var/lib/apt/lists/*
 
 # Копирование requirements и установка зависимостей
