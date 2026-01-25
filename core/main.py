@@ -199,12 +199,24 @@ async def _check_server_status(server: Server) -> dict:
             )
             
             try:
-                # Пытаемся получить список Inbounds (быстрая проверка доступности API)
-                # Если API отвечает (даже с пустым списком), сервер считается онлайн
+                # Пытаемся авторизоваться и получить список Inbounds (быстрая проверка доступности API)
+                # Сначала проверяем авторизацию
+                login_success = await x3ui.login()
+                if not login_success:
+                    response_time_ms = int((time.time() - start_time) * 1000)
+                    logger.warning(f"Не удалось авторизоваться в 3x-UI API для сервера {server.name}")
+                    return {
+                        "is_online": False,
+                        "response_time_ms": response_time_ms,
+                        "connection_speed_mbps": None,
+                        "error_message": "3x-UI API: ошибка авторизации",
+                    }
+                
+                # Если авторизация успешна, пытаемся получить список Inbounds
                 inbounds = await x3ui.list_inbounds()
                 response_time_ms = int((time.time() - start_time) * 1000)
-                # Считаем онлайн, если API ответил (inbounds может быть пустым списком, это нормально)
-                is_online = inbounds is not None
+                # Считаем онлайн, если авторизация прошла успешно (inbounds может быть пустым списком)
+                is_online = True
                 
                 logger.debug(f"Проверка 3x-UI API для сервера {server.name}: online={is_online}, time={response_time_ms}ms, inbounds_count={len(inbounds) if inbounds else 0}")
                 
@@ -212,7 +224,7 @@ async def _check_server_status(server: Server) -> dict:
                     "is_online": is_online,
                     "response_time_ms": response_time_ms,
                     "connection_speed_mbps": None,
-                    "error_message": None if is_online else "3x-UI API недоступен",
+                    "error_message": None,
                 }
             except ConnectionError as e:
                 # Ошибка подключения - сервер точно оффлайн
