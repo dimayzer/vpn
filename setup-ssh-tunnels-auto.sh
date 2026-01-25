@@ -28,7 +28,7 @@ while IFS='|' read -r server_name local_port remote_host remote_port ssh_user ss
     # Пропускаем пустые строки и комментарии
     [[ -z "$server_name" || "$server_name" =~ ^# ]] && continue
     
-    tunnel_count=$((tunnel_count + 1)
+    tunnel_count=$((tunnel_count + 1))
     service_name="x3ui-tunnel-${server_name,,}"  # lowercase
     
     echo ""
