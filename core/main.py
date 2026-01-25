@@ -258,26 +258,21 @@ async def _test_connection_speed(server: Server) -> float | None:
 
 async def _check_server_status(server: Server) -> dict:
     """
-    Простая проверка состояния сервера: если сервер пингуется - он онлайн
-    
-    Проверяет доступность сервера через ping (ICMP)
+    Максимально простая проверка: ping IP адреса
     """
     import subprocess
-    import platform
     import time
     
-    host = server.host
+    # Берем только IP адрес из host (убираем порт если есть)
+    host = server.host.split(':')[0].split('/')[0].strip()
     
-    logger.debug(f"Проверка сервера {server.name} ({host})")
+    logger.debug(f"Проверка сервера {server.name}: ping {host}")
     
     try:
         start_time = time.time()
         
-        # Определяем команду ping в зависимости от ОС
-        if platform.system().lower() == 'windows':
-            ping_cmd = ['ping', '-n', '1', '-w', '5000', host]
-        else:
-            ping_cmd = ['ping', '-c', '1', '-W', '5', host]
+        # Простой ping: ping -c 1 -W 5 IP
+        ping_cmd = ['ping', '-c', '1', '-W', '5', host]
         
         # Выполняем ping
         loop = asyncio.get_event_loop()
@@ -290,29 +285,18 @@ async def _check_server_status(server: Server) -> dict:
         is_online = result.returncode == 0
         
         if is_online:
-            logger.info(f"✅ Сервер {server.name}: онлайн (ping успешен), время={response_time_ms}ms")
-            # Если сервер онлайн, измеряем скорость соединения
-            connection_speed_mbps = await _test_connection_speed(server)
+            logger.info(f"✅ Сервер {server.name} ({host}): онлайн, время={response_time_ms}ms")
         else:
-            logger.warning(f"❌ Сервер {server.name}: оффлайн (ping не прошел), время={response_time_ms}ms")
-            connection_speed_mbps = None
+            logger.warning(f"❌ Сервер {server.name} ({host}): оффлайн, время={response_time_ms}ms")
         
         return {
             "is_online": is_online,
             "response_time_ms": response_time_ms,
-            "connection_speed_mbps": connection_speed_mbps,
-            "error_message": None if is_online else f"Сервер {host} недоступен (ping failed)",
-        }
-    except subprocess.TimeoutExpired:
-        logger.warning(f"❌ Сервер {server.name}: таймаут при ping")
-        return {
-            "is_online": False,
-            "response_time_ms": 10000,
             "connection_speed_mbps": None,
-            "error_message": f"Таймаут при ping {host}",
+            "error_message": None if is_online else f"Ping {host} failed",
         }
     except Exception as e:
-        logger.error(f"Ошибка при проверке сервера {server.name}: {e}")
+        logger.error(f"Ошибка при ping {host}: {e}")
         return {
             "is_online": False,
             "response_time_ms": None,
