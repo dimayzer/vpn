@@ -185,24 +185,34 @@ async def _check_server_status(server: Server) -> dict:
     """
     Простая проверка состояния сервера: если сервер пингуется - он онлайн
     
-    Проверяет доступность сервера через ping или проверку порта
+    Проверяет доступность сервера через ping (ICMP)
     """
-    import socket
+    import subprocess
+    import platform
     import time
     
     host = server.host
-    port = server.xray_port or 443
     
-    logger.debug(f"Проверка сервера {server.name} ({host}:{port})")
+    logger.debug(f"Проверка сервера {server.name} ({host})")
     
     try:
         start_time = time.time()
+        
+        # Определяем команду ping в зависимости от ОС
+        if platform.system().lower() == 'windows':
+            ping_cmd = ['ping', '-n', '1', '-w', '5000', host]
+        else:
+            ping_cmd = ['ping', '-c', '1', '-W', '5', host]
+        
+        # Выполняем ping
         loop = asyncio.get_event_loop()
-        is_online = await loop.run_in_executor(
+        result = await loop.run_in_executor(
             None,
-            lambda: _check_port_sync(host, port, timeout=10)
+            lambda: subprocess.run(ping_cmd, capture_output=True, timeout=10)
         )
+        
         response_time_ms = int((time.time() - start_time) * 1000)
+        is_online = result.returncode == 0
         
         if is_online:
             logger.info(f"✅ Сервер {server.name}: онлайн (ping успешен), время={response_time_ms}ms")
@@ -213,7 +223,15 @@ async def _check_server_status(server: Server) -> dict:
             "is_online": is_online,
             "response_time_ms": response_time_ms,
             "connection_speed_mbps": None,
-            "error_message": None if is_online else f"Сервер {host}:{port} недоступен",
+            "error_message": None if is_online else f"Сервер {host} недоступен (ping failed)",
+        }
+    except subprocess.TimeoutExpired:
+        logger.warning(f"❌ Сервер {server.name}: таймаут при ping")
+        return {
+            "is_online": False,
+            "response_time_ms": 10000,
+            "connection_speed_mbps": None,
+            "error_message": f"Таймаут при ping {host}",
         }
     except Exception as e:
         logger.error(f"Ошибка при проверке сервера {server.name}: {e}")
