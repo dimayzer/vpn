@@ -7352,6 +7352,11 @@ async def admin_web_create_subscription_plan(
         )
         
         await session.commit()
+        await session.refresh(new_plan)  # Обновляем объект после commit, чтобы получить ID
+        
+        import logging
+        logging.info(f"Создан новый тариф подписки: ID={new_plan.id}, name={name}, days={days}, price={price_rub:.2f} RUB")
+        
         return RedirectResponse(url="/admin/web/subscription-plans?success=created", status_code=303)
     except Exception as e:
         import logging
