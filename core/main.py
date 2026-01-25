@@ -6,7 +6,7 @@ import io
 import secrets
 import string
 from typing import Sequence
-from datetime import datetime
+from datetime import datetime, timezone
 import asyncio
 import logging
 from openpyxl import Workbook
@@ -31,7 +31,7 @@ import secrets
 import hashlib
 import hmac
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy import select, func, text, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
