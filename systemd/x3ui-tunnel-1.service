@@ -1,0 +1,14 @@
+[Unit]
+Description=SSH Tunnel to 3x-UI Server 1
+After=network.target
+
+[Service]
+Type=simple
+User=root
+ExecStart=/usr/bin/ssh -N -L 0.0.0.0:38868:127.0.0.1:38868 -i /root/fiorevpn/ssh/x3ui_key -o StrictHostKeyChecking=no -o ServerAliveInterval=30 -o ServerAliveCountMax=3 root@62.133.60.47
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+

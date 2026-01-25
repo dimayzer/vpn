@@ -115,11 +115,40 @@ netstat -tulpn | grep 38868
 
 ### 5.2. Для автоматического запуска при перезагрузке (systemd):
 
-Создайте файл `/etc/systemd/system/x3ui-tunnel.service`:
+#### Вариант А: Автоматическая настройка (рекомендуется)
+
+Используйте готовый скрипт:
+
+```bash
+cd ~/fiorevpn
+chmod +x setup-ssh-tunnels.sh
+sudo ./setup-ssh-tunnels.sh
+```
+
+Скрипт автоматически:
+- Проверит наличие SSH-ключей
+- Установит права на ключи
+- Скопирует systemd сервисы
+- Включит автозапуск
+- Запустит туннели
+
+#### Вариант Б: Ручная настройка
+
+**Для первого сервера:**
+
+```bash
+# Скопируйте сервис
+sudo cp ~/fiorevpn/systemd/x3ui-tunnel-1.service /etc/systemd/system/
+
+# Или создайте вручную
+sudo nano /etc/systemd/system/x3ui-tunnel-1.service
+```
+
+Содержимое файла:
 
 ```ini
 [Unit]
-Description=SSH Tunnel to 3x-UI
+Description=SSH Tunnel to 3x-UI Server 1
 After=network.target
 
 [Service]
@@ -133,13 +162,41 @@ RestartSec=10
 WantedBy=multi-user.target
 ```
 
-Запустите:
+**Для второго сервера:**
+
+1. Создайте второй SSH-ключ (если нужен отдельный):
+   ```bash
+   ssh-keygen -t ed25519 -f ~/fiorevpn/ssh/x3ui_key_2 -N ""
+   ssh-copy-id -i ~/fiorevpn/ssh/x3ui_key_2.pub root@SECOND_SERVER_IP
+   chmod 600 ~/fiorevpn/ssh/x3ui_key_2
+   ```
+
+2. Отредактируйте `~/fiorevpn/systemd/x3ui-tunnel-2.service`:
+   - Замените `SECOND_SERVER_IP` на IP второго сервера
+   - Убедитесь, что порт на хосте отличается (например, `38869`)
+   - Проверьте путь к SSH-ключу
+
+3. Скопируйте и запустите:
+   ```bash
+   sudo cp ~/fiorevpn/systemd/x3ui-tunnel-2.service /etc/systemd/system/
+   sudo systemctl daemon-reload
+   sudo systemctl enable x3ui-tunnel-2
+   sudo systemctl start x3ui-tunnel-2
+   sudo systemctl status x3ui-tunnel-2
+   ```
+
+**Запуск обоих сервисов:**
 
 ```bash
 sudo systemctl daemon-reload
-sudo systemctl enable x3ui-tunnel
-sudo systemctl start x3ui-tunnel
-sudo systemctl status x3ui-tunnel
+sudo systemctl enable x3ui-tunnel-1
+sudo systemctl start x3ui-tunnel-1
+sudo systemctl status x3ui-tunnel-1
+
+# Если настроен второй туннель
+sudo systemctl enable x3ui-tunnel-2
+sudo systemctl start x3ui-tunnel-2
+sudo systemctl status x3ui-tunnel-2
 ```
 
 ### 5.3. Обновите URL API в базе данных

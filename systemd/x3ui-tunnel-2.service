@@ -1,0 +1,15 @@
+[Unit]
+Description=SSH Tunnel to 3x-UI Server 2
+After=network.target
+
+[Service]
+Type=simple
+User=root
+# ИЗМЕНИТЕ: IP адрес второго сервера и порт (если отличается)
+ExecStart=/usr/bin/ssh -N -L 0.0.0.0:38869:127.0.0.1:38868 -i /root/fiorevpn/ssh/x3ui_key_2 -o StrictHostKeyChecking=no -o ServerAliveInterval=30 -o ServerAliveCountMax=3 root@SECOND_SERVER_IP
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+
