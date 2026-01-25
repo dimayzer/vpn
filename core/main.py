@@ -184,6 +184,7 @@ async def _check_server_status(server: Server) -> dict:
     """Проверяет состояние одного сервера"""
     import socket
     import time
+    import httpx
     
     # Если сервер использует 3x-UI API, проверяем доступность API вместо порта
     if server.x3ui_api_url and server.x3ui_username and server.x3ui_password:
