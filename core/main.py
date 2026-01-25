@@ -183,23 +183,19 @@ async def _test_connection_speed(server: Server) -> float | None:
 
 async def _check_server_status(server: Server) -> dict:
     """
-    Проверяет состояние одного сервера через 3x-UI API
+    Проверяет состояние одного сервера
     
     Логика проверки:
-    1. Авторизация в API (/login)
-    2. Получение списка inbounds (/inbounds/list)
-    3. Проверка наличия активных inbounds (enable = true)
+    1. Проверка доступности API (авторизация в 3x-UI API)
+    2. Проверка доступности сервера (ping/порт)
     
-    Статус сервера:
-    - OFFLINE: API не отвечает или ошибка подключения
-    - OFFLINE: API отвечает, но нет активных inbounds
-    - ONLINE: API отвечает и есть хотя бы один активный inbound
+    Если оба доступны - сервер ONLINE
     """
     import socket
     import time
     import httpx
     
-    # Если сервер использует 3x-UI API, проверяем через API
+    # Если сервер использует 3x-UI API, проверяем доступность API
     if server.x3ui_api_url and server.x3ui_username and server.x3ui_password:
         from core.x3ui_api import X3UIAPI
         start_time = time.time()
@@ -213,70 +209,27 @@ async def _check_server_status(server: Server) -> dict:
                 password=server.x3ui_password,
             )
             
-            # Шаг 1: Авторизация в API
+            # Проверяем доступность API через авторизацию
             login_success = await x3ui.login()
-            login_time_ms = int((time.time() - start_time) * 1000)
+            response_time_ms = int((time.time() - start_time) * 1000)
             
-            if not login_success:
-                # Авторизация не удалась - сервер оффлайн
-                logger.warning(f"❌ Сервер {server.name}: авторизация в 3x-UI API не удалась (время={login_time_ms}ms)")
-                return {
-                    "is_online": False,
-                    "response_time_ms": login_time_ms,
-                    "connection_speed_mbps": None,
-                    "error_message": "3x-UI API: ошибка авторизации",
-                }
-            
-            # Шаг 2: Получаем список Inbounds
-            try:
-                inbounds = await x3ui.list_inbounds()
-                total_time_ms = int((time.time() - start_time) * 1000)
-                
-                if not inbounds:
-                    # API отвечает, но нет inbounds - сервер в режиме обслуживания (оффлайн)
-                    logger.warning(f"⚠️ Сервер {server.name}: API отвечает, но нет inbounds (время={total_time_ms}ms)")
-                    return {
-                        "is_online": False,
-                        "response_time_ms": total_time_ms,
-                        "connection_speed_mbps": None,
-                        "error_message": "3x-UI API: нет настроенных inbounds",
-                    }
-                
-                # Шаг 3: Проверяем наличие активных inbounds (enable = true)
-                active_inbounds = [inb for inb in inbounds if inb.get("enable", False)]
-                
-                if not active_inbounds:
-                    # API отвечает, но все inbounds выключены - сервер в режиме обслуживания (оффлайн)
-                    logger.warning(f"⚠️ Сервер {server.name}: API отвечает, но все inbounds выключены (время={total_time_ms}ms)")
-                    return {
-                        "is_online": False,
-                        "response_time_ms": total_time_ms,
-                        "connection_speed_mbps": None,
-                        "error_message": "3x-UI API: нет активных inbounds",
-                    }
-                
-                # Есть активные inbounds - сервер онлайн
-                active_count = len(active_inbounds)
-                total_count = len(inbounds)
-                logger.info(f"✅ Сервер {server.name}: онлайн (3x-UI API), время={total_time_ms}ms, активных inbounds: {active_count}/{total_count}")
-                
+            if login_success:
+                # API доступен - сервер онлайн
+                logger.info(f"✅ Сервер {server.name}: онлайн (3x-UI API доступен), время={response_time_ms}ms")
                 return {
                     "is_online": True,
-                    "response_time_ms": total_time_ms,
+                    "response_time_ms": response_time_ms,
                     "connection_speed_mbps": None,
                     "error_message": None,
                 }
-                
-            except Exception as e:
-                # Ошибка при получении inbounds, но авторизация прошла
-                # Считаем сервер онлайн, так как API работает
-                total_time_ms = int((time.time() - start_time) * 1000)
-                logger.warning(f"⚠️ Сервер {server.name}: авторизация успешна, но не удалось получить inbounds (время={total_time_ms}ms): {e}")
+            else:
+                # API недоступен - сервер оффлайн
+                logger.warning(f"❌ Сервер {server.name}: 3x-UI API недоступен (время={response_time_ms}ms)")
                 return {
-                    "is_online": True,  # API работает, считаем онлайн
-                    "response_time_ms": total_time_ms,
+                    "is_online": False,
+                    "response_time_ms": response_time_ms,
                     "connection_speed_mbps": None,
-                    "error_message": f"Не удалось получить список inbounds: {str(e)[:100]}",
+                    "error_message": "3x-UI API: ошибка авторизации",
                 }
                 
         except httpx.ConnectError as e:
@@ -292,7 +245,7 @@ async def _check_server_status(server: Server) -> dict:
                 "error_message": f"3x-UI API недоступен: {error_str[:200]}",
             }
         except httpx.TimeoutException as e:
-            # Таймаут - сервер оффлайн или очень медленно отвечает
+            # Таймаут - сервер оффлайн
             response_time_ms = int((time.time() - start_time) * 1000)
             logger.warning(f"❌ Сервер {server.name}: таймаут при проверке 3x-UI API (время={response_time_ms}ms): {e}")
             return {
@@ -302,12 +255,11 @@ async def _check_server_status(server: Server) -> dict:
                 "error_message": "Таймаут при проверке 3x-UI API",
             }
         except Exception as e:
-            # Другие ошибки - логируем подробно
+            # Другие ошибки - сервер оффлайн
             response_time_ms = int((time.time() - start_time) * 1000)
             error_str = str(e)
             logger.error(f"❌ Ошибка при проверке 3x-UI API для сервера {server.name} (время={response_time_ms}ms): {e}", exc_info=True)
             
-            # Для ошибок подключения считаем оффлайн
             return {
                 "is_online": False,
                 "response_time_ms": response_time_ms,
