@@ -1149,15 +1149,17 @@ async def lifespan(app: FastAPI):
     
     # Фоновая задача для проверки состояния серверов
     async def check_servers_status():
-        """Проверяет состояние серверов (доступность портов)"""
+        """Проверяет состояние серверов через ping"""
         from core.db.session import SessionLocal
         import logging
         import time
         
+        # Первая проверка сразу при старте
+        await asyncio.sleep(5)
+        
         while True:
             try:
-                await asyncio.sleep(60)  # Проверка каждые 60 секунд
-                logging.info("Running scheduled server status check...")
+                logging.info("=== НАЧАЛО ПРОВЕРКИ СЕРВЕРОВ ===")
                 
                 async with SessionLocal() as session:
                     try:
@@ -1168,12 +1170,11 @@ async def lifespan(app: FastAPI):
                         )
                         servers_list = servers.all()
                         
+                        logging.info(f"Найдено {len(servers_list)} активных серверов для проверки")
+                        
                         checked_count = 0
                         for server in servers_list:
                             try:
-                                port = server.xray_port or 443
-                                host = server.host
-                                
                                 # Проверяем, когда была последняя проверка этого сервера
                                 last_status = await session.scalar(
                                     select(ServerStatus)
@@ -1186,14 +1187,18 @@ async def lifespan(app: FastAPI):
                                     from datetime import datetime, timezone
                                     time_since_check = (datetime.now(timezone.utc) - last_status.checked_at).total_seconds()
                                     if time_since_check < 20:
-                                        logger.debug(f"Пропускаем проверку сервера {server.name}, последняя проверка была {time_since_check:.1f} секунд назад")
+                                        logging.debug(f"Пропускаем проверку сервера {server.name}, последняя проверка была {time_since_check:.1f} секунд назад")
                                         continue
                                 
-                                # Проверяем доступность порта
+                                logging.info(f"Проверяем сервер {server.name} (host: {server.host})")
+                                
+                                # Проверяем доступность через ping
                                 status_result = await _check_server_status(server)
                                 is_online = status_result["is_online"]
                                 response_time_ms = status_result["response_time_ms"]
                                 error_message = status_result["error_message"]
+                                
+                                logging.info(f"Результат проверки {server.name}: online={is_online}, time={response_time_ms}ms, error={error_message}")
                                 
                                 # Сохраняем статус
                                 status = ServerStatus(
@@ -1206,11 +1211,11 @@ async def lifespan(app: FastAPI):
                                 session.add(status)
                                 checked_count += 1
                                 
-                                # Задержка между проверками серверов для избежания rate limiting
-                                await asyncio.sleep(1.0)  # Увеличено до 1 секунды
+                                # Задержка между проверками серверов
+                                await asyncio.sleep(1.0)
                                 
                             except Exception as e:
-                                logging.error(f"Error checking server {server.id} ({server.name}): {e}")
+                                logging.error(f"Ошибка при проверке сервера {server.id} ({server.name}): {e}", exc_info=True)
                                 # Сохраняем статус с ошибкой
                                 status = ServerStatus(
                                     server_id=server.id,
@@ -1221,7 +1226,7 @@ async def lifespan(app: FastAPI):
                         
                         if checked_count > 0:
                             await session.commit()
-                            logging.info(f"Checked status for {checked_count} servers")
+                            logging.info(f"✅ Проверено {checked_count} серверов, статусы сохранены")
                             
                             # Удаляем старые записи (оставляем только последние 100 на сервер)
                             for server in servers_list:
@@ -1234,14 +1239,22 @@ async def lifespan(app: FastAPI):
                                 for old_status in old_statuses.all():
                                     await session.delete(old_status)
                             await session.commit()
+                        else:
+                            logging.info("Нет серверов для проверки (все недавно проверялись)")
                             
                     except Exception as e:
-                        logging.error(f"Error checking servers status: {e}", exc_info=True)
+                        logging.error(f"Ошибка при проверке статусов серверов: {e}", exc_info=True)
                         await session.rollback()
+                
+                # Проверка каждые 60 секунд
+                await asyncio.sleep(60)
+                
             except asyncio.CancelledError:
+                logging.info("Задача проверки серверов отменена")
                 break
             except Exception as e:
-                logging.error(f"Error in server status check task: {e}", exc_info=True)
+                logging.error(f"Ошибка в задаче проверки серверов: {e}", exc_info=True)
+                await asyncio.sleep(60)  # Ждем перед следующей попыткой
     
     server_check_task = asyncio.create_task(check_servers_status())
     
