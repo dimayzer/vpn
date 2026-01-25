@@ -162,19 +162,20 @@ RestartSec=10
 WantedBy=multi-user.target
 ```
 
-**Для второго сервера:**
+**Для второго сервера (147.45.50.129:45087):**
 
-1. Создайте второй SSH-ключ (если нужен отдельный):
+1. Создайте второй SSH-ключ:
    ```bash
    ssh-keygen -t ed25519 -f ~/fiorevpn/ssh/x3ui_key_2 -N ""
-   ssh-copy-id -i ~/fiorevpn/ssh/x3ui_key_2.pub root@SECOND_SERVER_IP
+   ssh-copy-id -i ~/fiorevpn/ssh/x3ui_key_2.pub root@147.45.50.129
    chmod 600 ~/fiorevpn/ssh/x3ui_key_2
    ```
 
-2. Отредактируйте `~/fiorevpn/systemd/x3ui-tunnel-2.service`:
-   - Замените `SECOND_SERVER_IP` на IP второго сервера
-   - Убедитесь, что порт на хосте отличается (например, `38869`)
-   - Проверьте путь к SSH-ключу
+2. Файл `~/fiorevpn/systemd/x3ui-tunnel-2.service` уже настроен:
+   - IP: `147.45.50.129`
+   - Порт на хосте: `38869`
+   - Порт на VPN сервере: `45087` (3x-UI слушает на 127.0.0.1:45087)
+   - SSH-ключ: `/root/fiorevpn/ssh/x3ui_key_2`
 
 3. Скопируйте и запустите:
    ```bash
@@ -183,6 +184,16 @@ WantedBy=multi-user.target
    sudo systemctl enable x3ui-tunnel-2
    sudo systemctl start x3ui-tunnel-2
    sudo systemctl status x3ui-tunnel-2
+   ```
+
+4. Проверьте, что туннель работает:
+   ```bash
+   # На хосте
+   ss -tulpn | grep 38869
+   # Должно быть: 0.0.0.0:38869
+   
+   # Из контейнера
+   docker compose -f docker-compose.prod.yml exec core curl -s -o /dev/null -w "%{http_code}" http://host.docker.internal:38869
    ```
 
 **Запуск обоих сервисов:**
@@ -207,10 +218,10 @@ sudo systemctl status x3ui-tunnel-2
 - **Было**: `https://62.133.60.47:38868/YZELkBZQalymmcL2aP/panel/api`
 - **Стало**: `http://127.0.0.1:38868/YZELkBZQalymmcL2aP/panel/api`
 
-**Для второго сервера (порт 38869):**
+**Для второго сервера (147.45.50.129:45087, туннель на порту 38869):**
 
 В админ-панели измените:
-- **Было**: `https://SECOND_SERVER_IP:38868/.../panel/api`
+- **Было**: `https://147.45.50.129:45087/.../panel/api`
 - **Стало**: `http://127.0.0.1:38869/.../panel/api`
 
 **Примечание**: Код автоматически заменит `127.0.0.1` на `host.docker.internal` для доступа из контейнера.
@@ -223,10 +234,10 @@ UPDATE servers
 SET x3ui_api_url = REPLACE(x3ui_api_url, 'https://62.133.60.47:38868', 'http://127.0.0.1:38868')
 WHERE x3ui_api_url LIKE '%62.133.60.47:38868%';
 
--- Второй сервер (замените SECOND_SERVER_IP и порт)
+-- Второй сервер (147.45.50.129:45087)
 UPDATE servers 
-SET x3ui_api_url = REPLACE(x3ui_api_url, 'https://SECOND_SERVER_IP:38868', 'http://127.0.0.1:38869')
-WHERE x3ui_api_url LIKE '%SECOND_SERVER_IP:38868%';
+SET x3ui_api_url = REPLACE(x3ui_api_url, 'https://147.45.50.129:45087', 'http://127.0.0.1:38869')
+WHERE x3ui_api_url LIKE '%147.45.50.129:45087%';
 ```
 
 ## 🚀 Шаг 6: Перезапуск сервисов
