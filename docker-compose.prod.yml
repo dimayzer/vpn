@@ -31,6 +31,8 @@ services:
     environment:
       DB_URL: ${DB_URL:-postgresql+asyncpg://${POSTGRES_USER:-user}:${POSTGRES_PASSWORD:-password}@db:5432/${POSTGRES_DB:-vpn}}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      # Порты SSH-туннелей для проверки (через пробел)
+      TUNNEL_PORTS: ${TUNNEL_PORTS:-38868 38869}
     ports:
       - "${CORE_PORT:-8000}:8000"
     volumes:

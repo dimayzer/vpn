@@ -1,44 +1,61 @@
 #!/bin/bash
 set -e
 
-# SSH-туннель должен быть запущен на хосте, а не в контейнере
-# Проверяем доступность туннеля через host.docker.internal
-echo "🔍 Проверка доступности SSH-туннеля через host.docker.internal:38868..."
+# SSH-туннели должны быть запущены на хосте, а не в контейнере
+# Проверяем доступность всех туннелей через host.docker.internal
 
-# Используем несколько способов проверки
-TUNNEL_AVAILABLE=false
+# Список портов для проверки (можно расширить через переменные окружения)
+TUNNEL_PORTS="${TUNNEL_PORTS:-38868 38869}"
 
-# Способ 1: Проверка через curl (может не работать, если 3x-UI требует авторизацию)
-# Проверяем только доступность порта, не содержимое
-if curl -s --connect-timeout 2 --max-time 3 -o /dev/null -w "%{http_code}" http://host.docker.internal:38868 > /dev/null 2>&1; then
-    TUNNEL_AVAILABLE=true
-fi
+echo "🔍 Проверка доступности SSH-туннелей через host.docker.internal..."
 
-# Способ 2: Проверка через nc (netcat) или socket
-if ! $TUNNEL_AVAILABLE; then
-    if command -v nc >/dev/null 2>&1; then
-        if nc -z -w 2 host.docker.internal 38868 2>/dev/null; then
-            TUNNEL_AVAILABLE=true
+check_port() {
+    local port=$1
+    local available=false
+    
+    # Способ 1: Проверка через curl
+    if curl -s --connect-timeout 2 --max-time 3 -o /dev/null -w "%{http_code}" http://host.docker.internal:$port > /dev/null 2>&1; then
+        available=true
+    fi
+    
+    # Способ 2: Проверка через nc (netcat)
+    if ! $available && command -v nc >/dev/null 2>&1; then
+        if nc -z -w 2 host.docker.internal $port 2>/dev/null; then
+            available=true
         fi
     fi
-fi
-
-# Способ 3: Проверка через timeout и /dev/tcp (bash builtin)
-if ! $TUNNEL_AVAILABLE; then
-    if timeout 2 bash -c "echo > /dev/tcp/host.docker.internal/38868" 2>/dev/null; then
-        TUNNEL_AVAILABLE=true
+    
+    # Способ 3: Проверка через /dev/tcp (bash builtin)
+    if ! $available; then
+        if timeout 2 bash -c "echo > /dev/tcp/host.docker.internal/$port" 2>/dev/null; then
+            available=true
+        fi
     fi
-fi
+    
+    if $available; then
+        echo "   ✅ Порт $port доступен"
+        return 0
+    else
+        echo "   ⚠️ Порт $port недоступен"
+        return 1
+    fi
+}
 
-if $TUNNEL_AVAILABLE; then
-    echo "✅ SSH-туннель доступен через host.docker.internal:38868"
+# Проверяем все порты
+all_available=true
+for port in $TUNNEL_PORTS; do
+    if ! check_port $port; then
+        all_available=false
+    fi
+done
+
+if $all_available; then
+    echo "✅ Все SSH-туннели доступны"
 else
-    echo "⚠️ Предупреждение: Не удалось проверить доступность SSH-туннеля"
-    echo "ℹ️ Это может быть нормально, если туннель только что запущен"
-    echo "ℹ️ Убедитесь, что SSH-туннель запущен на хосте и слушает на 0.0.0.0:38868"
-    echo "ℹ️ Проверка на хосте: ss -tulpn | grep 38868"
-    echo "ℹ️ Команда для запуска на хосте:"
-    echo "   ssh -N -L 0.0.0.0:38868:127.0.0.1:38868 -i ~/fiorevpn/ssh/x3ui_key root@62.133.60.47"
+    echo "⚠️ Предупреждение: Некоторые туннели недоступны"
+    echo "ℹ️ Убедитесь, что SSH-туннели запущены на хосте и слушают на 0.0.0.0"
+    echo "ℹ️ Проверка на хосте: ss -tulpn | grep -E '$(echo $TUNNEL_PORTS | tr ' ' '|')'"
+    echo "ℹ️ Используйте скрипт: sudo ~/fiorevpn/setup-ssh-tunnels-auto.sh"
 fi
 
 # Запускаем основное приложение
