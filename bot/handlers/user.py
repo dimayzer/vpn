@@ -1646,8 +1646,11 @@ async def key_btn(message: Message) -> None:
             if vpn_key:
                 # Ключ уже есть - показываем его и кнопку "Сменить ключ"
                 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-                # Получаем базовый URL для ссылки на инструкцию
-                base_url = str(settings.core_api_base).rstrip('/')
+                # Получаем базовый URL для ссылки на инструкцию (используем публичный URL, если есть)
+                if settings.public_url:
+                    base_url = str(settings.public_url).rstrip('/')
+                else:
+                    base_url = str(settings.core_api_base).rstrip('/')
                 guide_url = f"{base_url}/vpn-guide"
                 
                 keyboard = InlineKeyboardMarkup(inline_keyboard=[
@@ -1787,8 +1790,11 @@ async def generate_key_handler(callback: CallbackQuery) -> None:
         
         # Обновляем сообщение
         from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-        # Получаем базовый URL для ссылки на инструкцию
-        base_url = str(settings.core_api_base).rstrip('/')
+        # Получаем базовый URL для ссылки на инструкцию (используем публичный URL, если есть)
+        if settings.public_url:
+            base_url = str(settings.public_url).rstrip('/')
+        else:
+            base_url = str(settings.core_api_base).rstrip('/')
         guide_url = f"{base_url}/vpn-guide"
         
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
@@ -1888,8 +1894,11 @@ async def regenerate_key_handler(callback: CallbackQuery) -> None:
         
         # Обновляем сообщение
         from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-        # Получаем базовый URL для ссылки на инструкцию
-        base_url = str(settings.core_api_base).rstrip('/')
+        # Получаем базовый URL для ссылки на инструкцию (используем публичный URL, если есть)
+        if settings.public_url:
+            base_url = str(settings.public_url).rstrip('/')
+        else:
+            base_url = str(settings.core_api_base).rstrip('/')
         guide_url = f"{base_url}/vpn-guide"
         
         keyboard = InlineKeyboardMarkup(inline_keyboard=[

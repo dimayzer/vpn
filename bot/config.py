@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     bot_token: SecretStr = Field(env="BOT_TOKEN")
     admin_ids: List[int] = Field(default_factory=list, env="ADMIN_IDS")
     core_api_base: HttpUrl = Field(default="http://localhost:8000", env="CORE_API_BASE")
+    public_url: HttpUrl | None = Field(default=None, env="PUBLIC_URL")  # Публичный URL для кнопок Telegram
     admin_token: str = Field(default="", env="ADMIN_TOKEN")
     ticket_bot_link: str = Field(default="", env="TICKET_BOT_LINK")
 
