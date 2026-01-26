@@ -785,6 +785,9 @@
             }
         });
         
+        // Храним последние timestamp проверок для каждого сервера
+        let lastCheckedTimestamps = {};
+        
         // Функция для обновления статусов серверов
         function updateServerStatuses() {
             // Добавляем timestamp для предотвращения кеширования
@@ -801,8 +804,19 @@
             })
                 .then(r => r.json())
                 .then(data => {
+                    let hasUpdates = false;
+                    
                     // Обновляем статусы серверов без перезагрузки страницы
                     data.servers.forEach(server => {
+                        // Проверяем, изменился ли timestamp последней проверки
+                        const currentCheckedAt = server.status?.checked_at;
+                        const lastCheckedAt = lastCheckedTimestamps[server.id];
+                        
+                        // Если timestamp изменился - есть обновление
+                        if (currentCheckedAt && currentCheckedAt !== lastCheckedAt) {
+                            hasUpdates = true;
+                            lastCheckedTimestamps[server.id] = currentCheckedAt;
+                        }
                         const serverCard = document.querySelector(`[data-server-id="${server.id}"]`);
                         if (!serverCard) return;
                         
@@ -946,28 +960,37 @@
                             }
                         }
                     });
+                    
+                    // Если есть обновления - обновляем график, если он открыт
+                    if (hasUpdates && currentServerId && pingChart) {
+                        loadServerHistory(currentServerId);
+                    }
                 })
                 .catch(err => console.error('Ошибка обновления статуса:', err));
         }
         
-        // Обновляем статусы сразу при загрузке страницы
-        updateServerStatuses();
-        
-        // Автоматическое обновление статуса каждые 5 секунд, чтобы сразу видеть результаты проверки
-        // Проверка на бэкенде происходит каждые 60 секунд, но мы обновляем UI чаще,
-        // чтобы сразу увидеть результаты, как только они появятся в БД
-        const STATUS_UPDATE_INTERVAL = 5000; // 5 секунд - частое обновление для быстрого отображения результатов
-        setInterval(updateServerStatuses, STATUS_UPDATE_INTERVAL);
-        
-        // Также обновляем график, если открыто модальное окно с деталями сервера
-        function updateChartIfOpen() {
-            if (currentServerId && pingChart) {
-                loadServerHistory(currentServerId);
-            }
+        // Инициализируем последние timestamp при первой загрузке
+        function initLastCheckedTimestamps() {
+            fetch(`/admin/web/api/servers`)
+                .then(r => r.json())
+                .then(data => {
+                    data.servers.forEach(server => {
+                        if (server.status?.checked_at) {
+                            lastCheckedTimestamps[server.id] = server.status.checked_at;
+                        }
+                    });
+                })
+                .catch(err => console.error('Ошибка инициализации timestamp:', err));
         }
         
-        // Обновляем график каждые 5 секунд, если он открыт
-        setInterval(updateChartIfOpen, 5000);
+        // Обновляем статусы сразу при загрузке страницы
+        updateServerStatuses();
+        initLastCheckedTimestamps();
+        
+        // Проверяем обновления каждые 2 секунды (быстро, но не нагружаем)
+        // Обновление произойдет только если данные изменились (новая проверка завершилась)
+        const STATUS_CHECK_INTERVAL = 2000; // 2 секунды - проверяем часто, но обновляем только при изменениях
+        setInterval(updateServerStatuses, STATUS_CHECK_INTERVAL);
         
         let pingChart = null;
         let currentServerId = null;
