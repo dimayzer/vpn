@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Инструкция по использованию VPN - fioreVPN</title>
+    <link rel="icon" type="image/png" href="/static/images/logo.png">
+    <link rel="shortcut icon" type="image/png" href="/static/images/logo.png">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+            line-height: 1.8;
+            color: #333;
+        }
+        
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+            animation: fadeInUp 0.8s ease-out;
+        }
+        
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 40px;
+            text-align: center;
+        }
+        
+        .header-brand {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        
+        .header-logo {
+            width: 60px;
+            height: 60px;
+            object-fit: contain;
+            filter: drop-shadow(0 5px 15px rgba(0, 0, 0, 0.2));
+        }
+        
+        .header h1 {
+            font-size: 2.5em;
+            margin: 0;
+            font-weight: 700;
+        }
+        
+        .header p {
+            margin-top: 10px;
+            opacity: 0.9;
+            font-size: 1.1em;
+        }
+        
+        .content {
+            padding: 50px 40px;
+        }
+        
+        .section {
+            margin-bottom: 40px;
+        }
+        
+        .section h2 {
+            color: #667eea;
+            font-size: 1.8em;
+            margin-bottom: 15px;
+            font-weight: 700;
+            border-left: 4px solid #667eea;
+            padding-left: 15px;
+        }
+        
+        .section h3 {
+            color: #764ba2;
+            font-size: 1.3em;
+            margin-top: 25px;
+            margin-bottom: 12px;
+            font-weight: 600;
+        }
+        
+        .section p {
+            margin-bottom: 15px;
+            color: #555;
+            font-size: 1.05em;
+        }
+        
+        .section ul, .section ol {
+            margin-left: 25px;
+            margin-bottom: 15px;
+            color: #555;
+        }
+        
+        .section li {
+            margin-bottom: 10px;
+            font-size: 1.05em;
+        }
+        
+        .device-card {
+            background: #f8f9fa;
+            border-radius: 15px;
+            padding: 25px;
+            margin: 20px 0;
+            border-left: 4px solid #667eea;
+        }
+        
+        .device-card h3 {
+            color: #667eea;
+            margin-top: 0;
+            margin-bottom: 15px;
+        }
+        
+        .app-link {
+            display: inline-block;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 12px 24px;
+            border-radius: 8px;
+            text-decoration: none;
+            font-weight: 600;
+            margin: 10px 10px 10px 0;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        
+        .app-link:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+        
+        .step {
+            background: white;
+            border: 2px solid #e9ecef;
+            border-radius: 12px;
+            padding: 20px;
+            margin: 15px 0;
+            position: relative;
+        }
+        
+        .step-number {
+            position: absolute;
+            top: -15px;
+            left: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            width: 35px;
+            height: 35px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 1.2em;
+        }
+        
+        .step-content {
+            margin-top: 10px;
+        }
+        
+        .step img {
+            max-width: 100%;
+            border-radius: 8px;
+            margin: 15px 0;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        .highlight {
+            background: rgba(102, 126, 234, 0.1);
+            padding: 20px;
+            border-radius: 10px;
+            border-left: 4px solid #667eea;
+            margin: 20px 0;
+        }
+        
+        .highlight strong {
+            color: #667eea;
+        }
+        
+        .code-block {
+            background: #2d2d2d;
+            color: #f8f8f2;
+            padding: 15px;
+            border-radius: 8px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+            overflow-x: auto;
+            margin: 15px 0;
+            word-break: break-all;
+        }
+        
+        .footer {
+            background: #f8f9fa;
+            padding: 30px 40px;
+            text-align: center;
+            border-top: 1px solid #e9ecef;
+        }
+        
+        .footer a {
+            color: #667eea;
+            text-decoration: none;
+            font-weight: 600;
+        }
+        
+        .footer a:hover {
+            text-decoration: underline;
+        }
+        
+        @media (max-width: 768px) {
+            .container {
+                margin: 10px;
+                border-radius: 15px;
+            }
+            
+            .header {
+                padding: 30px 20px;
+            }
+            
+            .header h1 {
+                font-size: 2em;
+            }
+            
+            .content {
+                padding: 30px 20px;
+            }
+            
+            .section h2 {
+                font-size: 1.5em;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="header-brand">
+                <img src="/static/images/logo.png" alt="fioreVPN" class="header-logo" onerror="this.style.display='none';">
+                <div>
+                    <h1>Инструкция по использованию VPN</h1>
+                    <p>fioreVPN</p>
+                </div>
+            </div>
+        </div>
+        
+        <div class="content">
+            {% if custom_content %}
+                {{ custom_content|safe }}
+            {% else %}
+                <div class="section">
+                    <h2>📱 Установка приложения</h2>
+                    <p>Выберите ваше устройство и скачайте соответствующее приложение:</p>
+                    
+                    <div class="device-card">
+                        <h3>📱 Android</h3>
+                        <p>Рекомендуемое приложение: <strong>v2rayNG</strong></p>
+                        <a href="https://play.google.com/store/apps/details?id=com.v2ray.ang" target="_blank" class="app-link">📥 Скачать v2rayNG (Google Play)</a>
+                        <a href="https://github.com/2dust/v2rayNG/releases" target="_blank" class="app-link">📥 Скачать v2rayNG (GitHub)</a>
+                    </div>
+                    
+                    <div class="device-card">
+                        <h3>🍎 iOS (iPhone/iPad)</h3>
+                        <p>Рекомендуемое приложение: <strong>v2rayNG</strong> или <strong>Shadowrocket</strong></p>
+                        <a href="https://apps.apple.com/app/v2rayng/id6446814690" target="_blank" class="app-link">📥 Скачать v2rayNG (App Store)</a>
+                        <p style="margin-top: 10px; font-size: 0.95em; color: #666;">Примечание: Для iOS может потребоваться настройка через TestFlight или альтернативные источники.</p>
+                    </div>
+                    
+                    <div class="device-card">
+                        <h3>💻 Windows</h3>
+                        <p>Рекомендуемое приложение: <strong>v2rayN</strong></p>
+                        <a href="https://github.com/2dust/v2rayN/releases" target="_blank" class="app-link">📥 Скачать v2rayN (GitHub)</a>
+                    </div>
+                    
+                    <div class="device-card">
+                        <h3>🍎 macOS</h3>
+                        <p>Рекомендуемое приложение: <strong>V2rayU</strong> или <strong>ClashX</strong></p>
+                        <a href="https://github.com/yanue/V2rayU/releases" target="_blank" class="app-link">📥 Скачать V2rayU (GitHub)</a>
+                    </div>
+                    
+                    <div class="device-card">
+                        <h3>🐧 Linux</h3>
+                        <p>Рекомендуемое приложение: <strong>v2rayA</strong> или <strong>Qv2ray</strong></p>
+                        <a href="https://github.com/v2rayA/v2rayA/releases" target="_blank" class="app-link">📥 Скачать v2rayA (GitHub)</a>
+                    </div>
+                </div>
+                
+                <div class="section">
+                    <h2>🔑 Добавление VPN ключа</h2>
+                    
+                    <div class="step">
+                        <div class="step-number">1</div>
+                        <div class="step-content">
+                            <h3>Скопируйте ваш VPN ключ</h3>
+                            <p>В Telegram-боте нажмите кнопку "🔑 Ключ" и скопируйте полученный ключ. Ключ выглядит как ссылка, начинающаяся с <code>vless://</code></p>
+                            <div class="code-block">vless://uuid@host:port?params#remark</div>
+                        </div>
+                    </div>
+                    
+                    <div class="step">
+                        <div class="step-number">2</div>
+                        <div class="step-content">
+                            <h3>Откройте приложение VPN</h3>
+                            <p>Запустите установленное приложение (v2rayNG, v2rayN и т.д.)</p>
+                        </div>
+                    </div>
+                    
+                    <div class="step">
+                        <div class="step-number">3</div>
+                        <div class="step-content">
+                            <h3>Добавьте конфигурацию</h3>
+                            <p><strong>Для Android (v2rayNG):</strong></p>
+                            <ol>
+                                <li>Нажмите на значок "+" или "Добавить конфигурацию"</li>
+                                <li>Выберите "Импорт из буфера обмена" или "Import from clipboard"</li>
+                                <li>Вставьте скопированный ключ</li>
+                                <li>Нажмите "OK" или "Сохранить"</li>
+                            </ol>
+                            
+                            <p style="margin-top: 20px;"><strong>Для iOS (v2rayNG):</strong></p>
+                            <ol>
+                                <li>Нажмите на "+" в правом верхнем углу</li>
+                                <li>Выберите "Импорт из буфера обмена"</li>
+                                <li>Вставьте скопированный ключ</li>
+                                <li>Нажмите "Готово"</li>
+                            </ol>
+                            
+                            <p style="margin-top: 20px;"><strong>Для Windows (v2rayN):</strong></p>
+                            <ol>
+                                <li>Нажмите на иконку "Подписки" в левом меню</li>
+                                <li>Выберите "Импорт из буфера обмена"</li>
+                                <li>Вставьте скопированный ключ</li>
+                                <li>Конфигурация будет добавлена автоматически</li>
+                            </ol>
+                        </div>
+                    </div>
+                    
+                    <div class="step">
+                        <div class="step-number">4</div>
+                        <div class="step-content">
+                            <h3>Подключитесь к VPN</h3>
+                            <p>После добавления конфигурации:</p>
+                            <ol>
+                                <li>Выберите добавленный сервер в списке</li>
+                                <li>Нажмите кнопку "Подключиться" или переключите переключатель</li>
+                                <li>Дождитесь установления соединения (обычно несколько секунд)</li>
+                                <li>Когда соединение установлено, вы увидите индикатор подключения</li>
+                            </ol>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="section">
+                    <h2>✅ Проверка подключения</h2>
+                    <p>После подключения к VPN проверьте, что всё работает:</p>
+                    <ol>
+                        <li>Откройте браузер и перейдите на <a href="https://whatismyipaddress.com" target="_blank">whatismyipaddress.com</a></li>
+                        <li>Проверьте, что IP-адрес изменился на IP вашего VPN-сервера</li>
+                        <li>Попробуйте открыть сайты, которые были недоступны без VPN</li>
+                    </ol>
+                </div>
+                
+                <div class="section">
+                    <h2>❓ Часто задаваемые вопросы</h2>
+                    
+                    <div class="highlight">
+                        <strong>В: Почему не подключается?</strong><br>
+                        О: Проверьте, что у вас активная подписка, выбран сервер, и ключ скопирован полностью. Также убедитесь, что приложение имеет разрешение на VPN-соединение.
+                    </div>
+                    
+                    <div class="highlight">
+                        <strong>В: Можно ли использовать на нескольких устройствах?</strong><br>
+                        О: Да, вы можете использовать один ключ на нескольких устройствах, но помните о лимитах одновременных подключений.
+                    </div>
+                    
+                    <div class="highlight">
+                        <strong>В: Как сменить сервер?</strong><br>
+                        О: В Telegram-боте выберите раздел "📡 Сервера", выберите другой сервер, затем сгенерируйте новый ключ.
+                    </div>
+                </div>
+            {% endif %}
+        </div>
+        
+        <div class="footer">
+            <p>
+                <a href="/privacy">Политика конфиденциальности</a>
+            </p>
+            <p style="margin-top: 15px; color: #666; font-size: 0.9em;">
+                © 2026 fioreVPN. Все права защищены.
+            </p>
+        </div>
+    </div>
+</body>
+</html>
+

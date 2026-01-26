@@ -103,3 +103,4 @@ echo "   systemctl restart x3ui-tunnel-2   # Перезапуск второго
 echo "   journalctl -u x3ui-tunnel-1 -f    # Логи первого туннеля"
 echo "   journalctl -u x3ui-tunnel-2 -f    # Логи второго туннеля"
 
+

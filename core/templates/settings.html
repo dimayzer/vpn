@@ -311,6 +311,15 @@
                 </div>
                 
                 <div class="section">
+                    <h2 class="section-title">📖 Инструкция по использованию VPN</h2>
+                    <div class="form-group">
+                        <label for="vpn_guide_content">Содержимое инструкции по использованию VPN</label>
+                        <textarea id="vpn_guide_content" name="vpn_guide_content" style="min-height: 400px; font-family: monospace; font-size: 0.9em;" placeholder="HTML содержимое инструкции по использованию VPN. Если оставить пустым, будет использоваться дефолтная инструкция.">{{ settings.get('vpn_guide_content', '') }}</textarea>
+                        <small>HTML содержимое инструкции по использованию VPN. Если оставить пустым, будет использоваться дефолтная инструкция. Инструкция доступна по адресу: <a href="/vpn-guide" target="_blank">/vpn-guide</a></small>
+                    </div>
+                </div>
+                
+                <div class="section">
                     <h2 class="section-title">⚙️ Дополнительные настройки</h2>
                     <div class="form-group">
                         <label for="trial_days">Длительность пробного периода (дней)</label>

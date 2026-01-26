@@ -1646,18 +1646,31 @@ async def key_btn(message: Message) -> None:
             if vpn_key:
                 # Ключ уже есть - показываем его и кнопку "Сменить ключ"
                 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-                keyboard = InlineKeyboardMarkup(inline_keyboard=[[
-                    InlineKeyboardButton(
-                        text="🔄 Сменить ключ",
-                        callback_data=f"regenerate_key_{message.from_user.id}"
-                    )
-                ]])
+                # Получаем базовый URL для ссылки на инструкцию
+                base_url = str(settings.core_api_base).rstrip('/')
+                guide_url = f"{base_url}/vpn-guide"
+                
+                keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                    [
+                        InlineKeyboardButton(
+                            text="📖 Инструкция по использованию",
+                            url=guide_url
+                        )
+                    ],
+                    [
+                        InlineKeyboardButton(
+                            text="🔄 Сменить ключ",
+                            callback_data=f"regenerate_key_{message.from_user.id}"
+                        )
+                    ]
+                ])
                 
                 await message.answer(
                     f"🔑 <b>Ваш VPN ключ</b>\n\n"
                     f"Сервер: <b>{server_name}</b>\n\n"
                     f"<code>{vpn_key}</code>\n\n"
-                    f"Используйте этот ключ для подключения к VPN.",
+                    f"Используйте этот ключ для подключения к VPN.\n\n"
+                    f"📖 <a href=\"{guide_url}\">Инструкция по использованию</a>",
                     parse_mode="HTML",
                     reply_markup=keyboard
                 )
@@ -1774,18 +1787,31 @@ async def generate_key_handler(callback: CallbackQuery) -> None:
         
         # Обновляем сообщение
         from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-        keyboard = InlineKeyboardMarkup(inline_keyboard=[[
-            InlineKeyboardButton(
-                text="🔄 Сменить ключ",
-                callback_data=f"regenerate_key_{tg_id}"
-            )
-        ]])
+        # Получаем базовый URL для ссылки на инструкцию
+        base_url = str(settings.core_api_base).rstrip('/')
+        guide_url = f"{base_url}/vpn-guide"
+        
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="📖 Инструкция по использованию",
+                    url=guide_url
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="🔄 Сменить ключ",
+                    callback_data=f"regenerate_key_{tg_id}"
+                )
+            ]
+        ])
         
         await callback.message.edit_text(
             f"🔑 <b>Ваш VPN ключ</b>\n\n"
             f"Сервер: <b>{server_name}</b>\n\n"
             f"<code>{vpn_key}</code>\n\n"
-            f"Используйте этот ключ для подключения к VPN.",
+            f"Используйте этот ключ для подключения к VPN.\n\n"
+            f"📖 <a href=\"{guide_url}\">Инструкция по использованию</a>",
             parse_mode="HTML",
             reply_markup=keyboard
         )
@@ -1862,18 +1888,31 @@ async def regenerate_key_handler(callback: CallbackQuery) -> None:
         
         # Обновляем сообщение
         from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-        keyboard = InlineKeyboardMarkup(inline_keyboard=[[
-            InlineKeyboardButton(
-                text="🔄 Сменить ключ",
-                callback_data=f"regenerate_key_{tg_id}"
-            )
-        ]])
+        # Получаем базовый URL для ссылки на инструкцию
+        base_url = str(settings.core_api_base).rstrip('/')
+        guide_url = f"{base_url}/vpn-guide"
+        
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="📖 Инструкция по использованию",
+                    url=guide_url
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="🔄 Сменить ключ",
+                    callback_data=f"regenerate_key_{tg_id}"
+                )
+            ]
+        ])
         
         await callback.message.edit_text(
             f"🔑 <b>Ваш VPN ключ</b>\n\n"
             f"Сервер: <b>{server_name}</b>\n\n"
             f"<code>{vpn_key}</code>\n\n"
-            f"Используйте этот ключ для подключения к VPN.",
+            f"Используйте этот ключ для подключения к VPN.\n\n"
+            f"📖 <a href=\"{guide_url}\">Инструкция по использованию</a>",
             parse_mode="HTML",
             reply_markup=keyboard
         )

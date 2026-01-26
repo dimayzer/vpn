@@ -1608,6 +1608,32 @@ async def privacy_policy(request: Request, session: AsyncSession = Depends(get_s
     )
 
 
+@app.get("/vpn-guide", response_class=HTMLResponse)
+@app.get("/guide", response_class=HTMLResponse)
+async def vpn_guide(request: Request, session: AsyncSession = Depends(get_session)):
+    """Инструкция по использованию VPN ключа"""
+    if not templates:
+        return HTMLResponse(content="<h1>Шаблоны не настроены</h1>", status_code=500)
+    
+    # Получаем кастомное содержимое инструкции из настроек
+    guide_content_setting = await session.scalar(
+        select(SystemSetting).where(SystemSetting.key == "vpn_guide_content")
+    )
+    
+    # Если есть кастомное содержимое, используем его, иначе дефолтный шаблон
+    custom_content = None
+    if guide_content_setting and guide_content_setting.value:
+        custom_content = guide_content_setting.value
+    
+    return templates.TemplateResponse(
+        "vpn_guide.html",
+        {
+            "request": request,
+            "custom_content": custom_content,
+        },
+    )
+
+
 @app.get("/robots.txt")
 async def robots_txt():
     """Robots.txt для поисковых ботов"""
@@ -7148,6 +7174,32 @@ async def admin_web_update_settings(
                         action=AuditLogAction.admin_action,
                         admin_tg_id=actor_tg,
                         details=f"Обновлена политика конфиденциальности",
+                    )
+                )
+                continue
+            
+            # Специальная обработка для инструкции по использованию VPN
+            if key == "vpn_guide_content":
+                # Сохраняем инструкцию
+                setting = await session.scalar(select(SystemSetting).where(SystemSetting.key == key))
+                if setting:
+                    setting.value = str(value)
+                    setting.updated_by_tg_id = actor_tg
+                    setting.updated_at = datetime.utcnow()
+                else:
+                    setting = SystemSetting(
+                        key=key,
+                        value=str(value),
+                        updated_by_tg_id=actor_tg,
+                        updated_at=datetime.utcnow(),
+                    )
+                    session.add(setting)
+                
+                session.add(
+                    AuditLog(
+                        action=AuditLogAction.admin_action,
+                        admin_tg_id=actor_tg,
+                        details=f"Обновлена инструкция по использованию VPN",
                     )
                 )
                 continue
