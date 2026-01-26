@@ -228,25 +228,225 @@
         }
         
         @media (max-width: 768px) {
+            body {
+                padding: 10px;
+            }
+            
             .container {
-                margin: 10px;
+                margin: 0;
                 border-radius: 15px;
             }
             
             .header {
-                padding: 30px 20px;
+                padding: 25px 15px;
+            }
+            
+            .header-brand {
+                flex-direction: column;
+                gap: 10px;
+            }
+            
+            .header-logo {
+                width: 50px;
+                height: 50px;
             }
             
             .header h1 {
-                font-size: 2em;
+                font-size: 1.6em;
+                line-height: 1.2;
+            }
+            
+            .header p {
+                font-size: 0.95em;
+                margin-top: 5px;
             }
             
             .content {
-                padding: 30px 20px;
+                padding: 25px 15px;
+            }
+            
+            .section {
+                margin-bottom: 30px;
             }
             
             .section h2 {
-                font-size: 1.5em;
+                font-size: 1.4em;
+                margin-bottom: 12px;
+                padding-left: 12px;
+                border-left-width: 3px;
+            }
+            
+            .section h3 {
+                font-size: 1.15em;
+                margin-top: 20px;
+                margin-bottom: 10px;
+            }
+            
+            .section p {
+                font-size: 0.95em;
+                margin-bottom: 12px;
+            }
+            
+            .section ul, .section ol {
+                margin-left: 20px;
+                margin-bottom: 12px;
+            }
+            
+            .section li {
+                margin-bottom: 8px;
+                font-size: 0.95em;
+            }
+            
+            .device-card {
+                padding: 20px;
+                margin: 15px 0;
+            }
+            
+            .device-card h3 {
+                font-size: 1.2em;
+                margin-bottom: 12px;
+            }
+            
+            .app-link {
+                display: block;
+                width: 100%;
+                padding: 12px 20px;
+                margin: 8px 0;
+                text-align: center;
+                font-size: 0.95em;
+            }
+            
+            .step {
+                padding: 15px;
+                margin: 12px 0;
+            }
+            
+            .step-number {
+                width: 30px;
+                height: 30px;
+                font-size: 1em;
+                top: -12px;
+                left: 15px;
+            }
+            
+            .step-content {
+                margin-top: 8px;
+            }
+            
+            .step-content h3 {
+                font-size: 1.1em;
+                margin-top: 0;
+            }
+            
+            .step-content p {
+                font-size: 0.9em;
+            }
+            
+            .step-content ol {
+                margin-left: 18px;
+            }
+            
+            .highlight {
+                padding: 15px;
+                margin: 15px 0;
+                font-size: 0.95em;
+            }
+            
+            .code-block {
+                padding: 12px;
+                font-size: 0.85em;
+                overflow-x: auto;
+                -webkit-overflow-scrolling: touch;
+            }
+            
+            .footer {
+                padding: 20px 15px;
+            }
+            
+            .footer p {
+                font-size: 0.9em;
+            }
+        }
+        
+        @media (max-width: 480px) {
+            body {
+                padding: 5px;
+            }
+            
+            .header {
+                padding: 20px 12px;
+            }
+            
+            .header h1 {
+                font-size: 1.4em;
+            }
+            
+            .header p {
+                font-size: 0.9em;
+            }
+            
+            .content {
+                padding: 20px 12px;
+            }
+            
+            .section h2 {
+                font-size: 1.25em;
+                padding-left: 10px;
+            }
+            
+            .section h3 {
+                font-size: 1.1em;
+            }
+            
+            .section p {
+                font-size: 0.9em;
+            }
+            
+            .section li {
+                font-size: 0.9em;
+            }
+            
+            .device-card {
+                padding: 15px;
+            }
+            
+            .device-card h3 {
+                font-size: 1.1em;
+            }
+            
+            .app-link {
+                padding: 10px 15px;
+                font-size: 0.9em;
+            }
+            
+            .step {
+                padding: 12px;
+            }
+            
+            .step-number {
+                width: 28px;
+                height: 28px;
+                font-size: 0.95em;
+                top: -10px;
+                left: 12px;
+            }
+            
+            .step-content h3 {
+                font-size: 1em;
+            }
+            
+            .step-content p {
+                font-size: 0.85em;
+            }
+            
+            .code-block {
+                padding: 10px;
+                font-size: 0.8em;
+            }
+            
+            .highlight {
+                padding: 12px;
+                font-size: 0.9em;
             }
         }
     </style>

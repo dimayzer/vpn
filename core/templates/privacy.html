@@ -169,25 +169,139 @@
         }
         
         @media (max-width: 768px) {
+            body {
+                padding: 10px;
+            }
+            
             .container {
-                margin: 10px;
+                margin: 0;
                 border-radius: 15px;
             }
             
             .header {
-                padding: 30px 20px;
+                padding: 25px 15px;
+            }
+            
+            .header-brand {
+                flex-direction: column;
+                gap: 10px;
+            }
+            
+            .header-logo {
+                width: 50px;
+                height: 50px;
             }
             
             .header h1 {
-                font-size: 2em;
+                font-size: 1.6em;
+                line-height: 1.2;
+            }
+            
+            .header p {
+                font-size: 0.95em;
+                margin-top: 5px;
             }
             
             .content {
-                padding: 30px 20px;
+                padding: 25px 15px;
+            }
+            
+            .last-updated {
+                font-size: 0.85em;
+                margin-bottom: 20px;
+                padding-bottom: 15px;
+            }
+            
+            .section {
+                margin-bottom: 30px;
             }
             
             .section h2 {
-                font-size: 1.5em;
+                font-size: 1.4em;
+                margin-bottom: 12px;
+                padding-left: 12px;
+                border-left-width: 3px;
+            }
+            
+            .section h3 {
+                font-size: 1.15em;
+                margin-top: 20px;
+                margin-bottom: 10px;
+            }
+            
+            .section p {
+                font-size: 0.95em;
+                margin-bottom: 12px;
+            }
+            
+            .section ul, .section ol {
+                margin-left: 20px;
+                margin-bottom: 12px;
+            }
+            
+            .section li {
+                margin-bottom: 8px;
+                font-size: 0.95em;
+            }
+            
+            .highlight {
+                padding: 15px;
+                margin: 15px 0;
+            }
+            
+            .contact-info {
+                padding: 15px;
+            }
+            
+            .contact-info p {
+                font-size: 0.9em;
+            }
+            
+            .footer {
+                padding: 20px 15px;
+            }
+            
+            .footer p {
+                font-size: 0.9em;
+            }
+        }
+        
+        @media (max-width: 480px) {
+            body {
+                padding: 5px;
+            }
+            
+            .header {
+                padding: 20px 12px;
+            }
+            
+            .header h1 {
+                font-size: 1.4em;
+            }
+            
+            .header p {
+                font-size: 0.9em;
+            }
+            
+            .content {
+                padding: 20px 12px;
+            }
+            
+            .section h2 {
+                font-size: 1.25em;
+                padding-left: 10px;
+            }
+            
+            .section h3 {
+                font-size: 1.1em;
+            }
+            
+            .section p {
+                font-size: 0.9em;
+            }
+            
+            .section li {
+                font-size: 0.9em;
             }
         }
     </style>
