@@ -789,13 +789,15 @@
         function updateServerStatuses() {
             // Добавляем timestamp для предотвращения кеширования
             const timestamp = new Date().getTime();
-            fetch(`/admin/web/api/servers?t=${timestamp}`, {
+            fetch(`/admin/web/api/servers?t=${timestamp}&_=${Date.now()}`, {
                 method: 'GET',
                 headers: {
                     'Cache-Control': 'no-cache, no-store, must-revalidate',
                     'Pragma': 'no-cache',
-                    'Expires': '0'
-                }
+                    'Expires': '0',
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
+                cache: 'no-store'
             })
                 .then(r => r.json())
                 .then(data => {
@@ -953,7 +955,9 @@
         
         // Автоматическое обновление статуса каждые 60 секунд (синхронизировано с проверкой на бэкенде)
         // Серверы проверяются на бэкенде каждые 60 секунд, поэтому обновляем UI тоже каждые 60 секунд
-        setInterval(updateServerStatuses, 60000); // Каждые 60 секунд
+        // ВАЖНО: интервал 60000 миллисекунд = 60 секунд, НЕ 30 секунд!
+        const STATUS_UPDATE_INTERVAL = 60000; // 60 секунд
+        setInterval(updateServerStatuses, STATUS_UPDATE_INTERVAL);
         
         let pingChart = null;
         let currentServerId = null;
