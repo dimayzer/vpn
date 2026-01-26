@@ -1149,7 +1149,7 @@ async def lifespan(app: FastAPI):
     
     # Фоновая задача для проверки состояния серверов
     async def check_servers_status():
-        """Проверяет состояние серверов через ping"""
+        """Проверяет состояние серверов через ping строго каждые 60 секунд"""
         from core.db.session import SessionLocal
         import logging
         import time
@@ -1157,7 +1157,13 @@ async def lifespan(app: FastAPI):
         # Первая проверка сразу при старте
         await asyncio.sleep(5)
         
+        # Интервал проверки: ровно 60 секунд
+        CHECK_INTERVAL = 60.0
+        
         while True:
+            # Запоминаем время начала проверки
+            check_start_time = time.time()
+            
             try:
                 logging.info("=== НАЧАЛО ПРОВЕРКИ СЕРВЕРОВ ===")
                 
@@ -1231,15 +1237,25 @@ async def lifespan(app: FastAPI):
                         logging.error(f"Ошибка при проверке статусов серверов: {e}", exc_info=True)
                         await session.rollback()
                 
-                # Проверка каждые 60 секунд
-                await asyncio.sleep(60)
+                # Вычисляем, сколько времени заняла проверка
+                check_duration = time.time() - check_start_time
+                
+                # Ждем оставшееся время до следующей проверки (ровно 60 секунд от начала предыдущей)
+                sleep_time = max(0.0, CHECK_INTERVAL - check_duration)
+                
+                if sleep_time > 0:
+                    logging.info(f"Проверка заняла {check_duration:.2f}с, ждем {sleep_time:.2f}с до следующей проверки")
+                    await asyncio.sleep(sleep_time)
+                else:
+                    logging.warning(f"Проверка заняла {check_duration:.2f}с (больше {CHECK_INTERVAL}с), начинаем следующую сразу")
                 
             except asyncio.CancelledError:
                 logging.info("Задача проверки серверов отменена")
                 break
             except Exception as e:
                 logging.error(f"Ошибка в задаче проверки серверов: {e}", exc_info=True)
-                await asyncio.sleep(60)  # Ждем перед следующей попыткой
+                # При ошибке ждем полный интервал
+                await asyncio.sleep(CHECK_INTERVAL)
     
     server_check_task = asyncio.create_task(check_servers_status())
     
