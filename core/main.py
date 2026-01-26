@@ -1175,21 +1175,6 @@ async def lifespan(app: FastAPI):
                         checked_count = 0
                         for server in servers_list:
                             try:
-                                # Проверяем, когда была последняя проверка этого сервера
-                                last_status = await session.scalar(
-                                    select(ServerStatus)
-                                    .where(ServerStatus.server_id == server.id)
-                                    .order_by(ServerStatus.checked_at.desc())
-                                )
-                                
-                                # Если последняя проверка была менее 20 секунд назад, пропускаем
-                                if last_status and last_status.checked_at:
-                                    from datetime import datetime, timezone
-                                    time_since_check = (datetime.now(timezone.utc) - last_status.checked_at).total_seconds()
-                                    if time_since_check < 20:
-                                        logging.debug(f"Пропускаем проверку сервера {server.name}, последняя проверка была {time_since_check:.1f} секунд назад")
-                                        continue
-                                
                                 logging.info(f"Проверяем сервер {server.name} (host: {server.host})")
                                 
                                 # Проверяем доступность через ping
@@ -1240,7 +1225,7 @@ async def lifespan(app: FastAPI):
                                     await session.delete(old_status)
                             await session.commit()
                         else:
-                            logging.info("Нет серверов для проверки (все недавно проверялись)")
+                            logging.info("Нет серверов для проверки")
                             
                     except Exception as e:
                         logging.error(f"Ошибка при проверке статусов серверов: {e}", exc_info=True)
